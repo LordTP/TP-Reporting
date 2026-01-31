@@ -19,6 +19,8 @@ from app.models.catalog_hierarchy import CatalogCategory, CatalogItemCategoryMem
 from app.models.daily_sales_summary import DailySalesSummary
 from app.models.exchange_rate import ExchangeRate
 from app.models.location_group import LocationGroup, location_group_members
+from app.models.role_permission import RolePermission
+from app.models.footfall import FootfallEntry
 
 __all__ = [
     "Base",
@@ -42,4 +44,6 @@ __all__ = [
     "ExchangeRate",
     "LocationGroup",
     "location_group_members",
+    "RolePermission",
+    "FootfallEntry",
 ]

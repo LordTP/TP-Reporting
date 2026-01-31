@@ -4,8 +4,10 @@ import { apiClient } from '@/lib/api-client'
 import { useReportFilters } from './useReportFilters'
 import ReportLayout from './ReportLayout'
 import KPICard from '@/components/charts/KPICard'
-import { ShoppingBag, DollarSign, TrendingUp, Hash, Download } from 'lucide-react'
+import { ShoppingBag, DollarSign, TrendingUp, Hash } from 'lucide-react'
+import ExportButton from '@/components/ExportButton'
 import { exportToExcel, penceToPounds } from './exportToExcel'
+import { CurrencyBreakdownAnnotation, CurrencyBreakdownItem } from './CurrencyBreakdown'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 function formatCurrency(amount: number, currency: string) {
@@ -23,6 +25,8 @@ interface VariantItem {
   quantity: number
   revenue: number
   transaction_count: number
+  original_amounts?: Record<string, number>
+  converted_amounts?: Record<string, number>
 }
 
 const PAGE_SIZE = 100
@@ -64,6 +68,7 @@ export default function SalesByProductReport() {
         variants: VariantItem[]
         total_items: number
         total_revenue: number
+        by_currency?: CurrencyBreakdownItem[]
       }>(`/sales/products/categories?${params}`)
     },
     enabled: viewMode === 'sku',
@@ -97,7 +102,7 @@ export default function SalesByProductReport() {
     ? (productsData?.products || []).reduce((best, p) => p.total_revenue > best.total_revenue ? p : best)
     : null
 
-  // Aggregate original + converted amounts across all products for KPI annotation
+  // Aggregate original + converted amounts across all products/variants for KPI annotation
   const totalOrigByCurrency: Record<string, { original: number; converted: number }> = {}
   if (viewMode === 'product') {
     for (const p of products) {
@@ -106,6 +111,16 @@ export default function SalesByProductReport() {
           if (!totalOrigByCurrency[cur]) totalOrigByCurrency[cur] = { original: 0, converted: 0 }
           totalOrigByCurrency[cur].original += amt
           totalOrigByCurrency[cur].converted += (p.converted_amounts[cur] || 0)
+        }
+      }
+    }
+  } else {
+    for (const v of variants) {
+      if (v.original_amounts && v.converted_amounts) {
+        for (const [cur, amt] of Object.entries(v.original_amounts)) {
+          if (!totalOrigByCurrency[cur]) totalOrigByCurrency[cur] = { original: 0, converted: 0 }
+          totalOrigByCurrency[cur].original += amt
+          totalOrigByCurrency[cur].converted += (v.converted_amounts[cur] || 0)
         }
       }
     }
@@ -243,10 +258,7 @@ export default function SalesByProductReport() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold">Product Performance</CardTitle>
-              <button onClick={handleExportProducts} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                <Download className="h-3.5 w-3.5" />
-                Export Excel
-              </button>
+              <ExportButton onClick={handleExportProducts} />
             </div>
             <CardDescription>Click column headers to sort</CardDescription>
           </CardHeader>
@@ -370,10 +382,7 @@ export default function SalesByProductReport() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold">SKU / Size Breakdown</CardTitle>
-              <button onClick={handleExportSku} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                <Download className="h-3.5 w-3.5" />
-                Export Excel
-              </button>
+              <ExportButton onClick={handleExportSku} />
             </div>
             <CardDescription>Each product broken down by size/variant. Click column headers to sort.</CardDescription>
           </CardHeader>
@@ -432,7 +441,14 @@ export default function SalesByProductReport() {
                         </td>
                         <td className="px-4 py-3 text-sm text-right text-foreground">{v.quantity.toLocaleString()}</td>
                         <td className="px-4 py-3 text-sm text-right text-foreground">{v.transaction_count.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">{formatCurrency(v.revenue, 'GBP')}</td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">
+                          {formatCurrency(v.revenue, 'GBP')}
+                          {v.original_amounts && v.converted_amounts && Object.entries(v.original_amounts).map(([cur, amt]) => (
+                            <div key={cur} className="text-[10px] font-normal text-muted-foreground/60">
+                              {formatCurrency(amt, cur)} → {formatCurrency(v.converted_amounts![cur] || 0, 'GBP')}
+                            </div>
+                          ))}
+                        </td>
                         <td className="px-4 py-3 text-sm text-right text-muted-foreground">
                           {totalRevenue > 0 ? `${((v.revenue / totalRevenue) * 100).toFixed(1)}%` : '0%'}
                         </td>

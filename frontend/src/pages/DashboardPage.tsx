@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { useState } from 'react'
 import ClientCategoryKeywords from '@/features/clients/ClientCategoryKeywords'
+import RolePermissionMatrix from '@/features/permissions/RolePermissionMatrix'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export const DashboardPage = () => {
@@ -1223,6 +1224,13 @@ export const DashboardPage = () => {
                 No location groups created. Group locations to see aggregated data in the Analytics page.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Role Permissions Section */}
+        {isAdmin && (
+          <div className="mt-8 bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+            <RolePermissionMatrix />
           </div>
         )}
       </main>

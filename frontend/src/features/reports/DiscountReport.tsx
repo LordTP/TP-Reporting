@@ -1,9 +1,11 @@
+import React, { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { useReportFilters } from './useReportFilters'
 import ReportLayout from './ReportLayout'
 import KPICard from '@/components/charts/KPICard'
-import { Percent, DollarSign, Hash, TrendingDown, Download } from 'lucide-react'
+import { Percent, DollarSign, Hash, TrendingDown, ChevronRight, ChevronDown } from 'lucide-react'
+import ExportButton from '@/components/ExportButton'
 import { exportToExcel, penceToPounds, formatDateForExcel } from './exportToExcel'
 import { CurrencyBreakdownAnnotation, CurrencyBreakdownItem } from './CurrencyBreakdown'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -27,7 +29,7 @@ interface DiscountData {
   total_transactions: number
   discount_rate: number
   daily: Array<{ date: string; discounts: number; sales: number; transactions: number }>
-  by_location: Array<{ location_name: string; discounts: number; sales: number; transactions: number }>
+  by_location: Array<{ location_id: string; location_name: string; discounts: number; sales: number; transactions: number }>
   by_code: DiscountCode[]
   currency: string
   by_currency?: CurrencyBreakdownItem[]
@@ -44,12 +46,70 @@ export default function DiscountReport() {
     },
   })
 
+  // Fetch location groups
+  const { data: locationGroupsData } = useQuery({
+    queryKey: ['location-groups'],
+    queryFn: () => apiClient.get<{ location_groups: Array<{ id: string; name: string; location_ids: string[] }> }>('/location-groups'),
+  })
+
   const currency = data?.currency || 'GBP'
   const currencySymbol = currency === 'GBP' ? '£' : currency === 'EUR' ? '€' : '$'
   const daily = data?.daily || []
   const byLocation = data?.by_location || []
   const byCode = data?.by_code || []
   const topCode = byCode.length > 0 ? byCode[0] : null
+
+  // Group expansion state
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
+
+  // Process locations into grouped + ungrouped rows
+  const processedLocations = useMemo(() => {
+    if (!byLocation.length) return []
+    const groups = locationGroupsData?.location_groups || []
+    const result: any[] = []
+    const groupedLocationIds = new Set<string>()
+
+    for (const group of groups) {
+      const children = byLocation.filter(loc => group.location_ids.includes(loc.location_id))
+      if (children.length === 0) continue
+
+      children.forEach(loc => groupedLocationIds.add(loc.location_id))
+
+      const groupDiscounts = children.reduce((s, l) => s + l.discounts, 0)
+      const groupSales = children.reduce((s, l) => s + l.sales, 0)
+
+      result.push({
+        id: group.id,
+        isGroup: true,
+        name: group.name,
+        discounts: groupDiscounts,
+        sales: groupSales,
+        children: children.sort((a, b) => b.discounts - a.discounts),
+      })
+    }
+
+    // Add ungrouped locations
+    for (const loc of byLocation) {
+      if (!groupedLocationIds.has(loc.location_id)) {
+        result.push({
+          id: loc.location_id,
+          isGroup: false,
+          name: loc.location_name,
+          ...loc,
+        })
+      }
+    }
+
+    return result.sort((a, b) => b.discounts - a.discounts)
+  }, [byLocation, locationGroupsData])
 
   const handleExport = () => {
     const sheets: Array<{ name: string; headers: string[]; rows: (string | number)[][] }> = []
@@ -76,15 +136,38 @@ export default function DiscountReport() {
         d.sales > 0 ? `${((d.discounts / d.sales) * 100).toFixed(1)}%` : '0%',
       ]),
     })
+
+    // Export by location — flattened with group headers and children
+    const locRows: (string | number)[][] = []
+    for (const item of processedLocations) {
+      if (item.isGroup) {
+        locRows.push([
+          `${item.name} (Group)`,
+          penceToPounds(item.sales),
+          penceToPounds(item.discounts),
+          item.sales > 0 ? `${((item.discounts / item.sales) * 100).toFixed(1)}%` : '0%',
+        ])
+        for (const child of item.children) {
+          locRows.push([
+            `  └ ${child.location_name}`,
+            penceToPounds(child.sales),
+            penceToPounds(child.discounts),
+            child.sales > 0 ? `${((child.discounts / child.sales) * 100).toFixed(1)}%` : '0%',
+          ])
+        }
+      } else {
+        locRows.push([
+          item.name,
+          penceToPounds(item.sales),
+          penceToPounds(item.discounts),
+          item.sales > 0 ? `${((item.discounts / item.sales) * 100).toFixed(1)}%` : '0%',
+        ])
+      }
+    }
     sheets.push({
       name: 'By Location',
       headers: ['Location', 'Sales', 'Discounts', 'Rate'],
-      rows: byLocation.map(loc => [
-        loc.location_name,
-        penceToPounds(loc.sales),
-        penceToPounds(loc.discounts),
-        loc.sales > 0 ? `${((loc.discounts / loc.sales) * 100).toFixed(1)}%` : '0%',
-      ]),
+      rows: locRows,
     })
     exportToExcel(sheets, 'Discount_Report')
   }
@@ -163,10 +246,7 @@ export default function DiscountReport() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold">Discount Codes / Names</CardTitle>
-            <button onClick={handleExport} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-              <Download className="h-3.5 w-3.5" />
-              Export Excel
-            </button>
+            <ExportButton onClick={handleExport} />
           </div>
           <CardDescription>Breakdown by discount code with usage count and total amount</CardDescription>
         </CardHeader>
@@ -279,11 +359,12 @@ export default function DiscountReport() {
             <CardDescription>Discounts per store</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            {byLocation.length > 0 ? (
-              <div className="overflow-x-auto">
+            {processedLocations.length > 0 ? (
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                 <table className="w-full">
-                  <thead>
+                  <thead className="sticky top-0 bg-card">
                     <tr className="border-b border-border bg-muted/50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-8" />
                       <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sales</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Discounts</th>
@@ -291,19 +372,59 @@ export default function DiscountReport() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {byLocation.map((loc) => (
-                      <tr key={loc.location_name} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-2.5 text-sm font-medium text-foreground">{loc.location_name}</td>
-                        <td className="px-4 py-2.5 text-sm text-right text-muted-foreground">{formatCurrency(loc.sales, currency)}</td>
-                        <td className="px-4 py-2.5 text-sm text-right font-semibold text-foreground">{formatCurrency(loc.discounts, currency)}</td>
-                        <td className="px-4 py-2.5 text-sm text-right text-muted-foreground">
-                          {loc.sales > 0 ? `${((loc.discounts / loc.sales) * 100).toFixed(1)}%` : '0%'}
-                        </td>
-                      </tr>
+                    {processedLocations.map((item: any) => (
+                      <React.Fragment key={item.id}>
+                        <tr
+                          className={`transition-colors ${item.isGroup ? 'bg-muted/20 hover:bg-muted/40 cursor-pointer' : 'hover:bg-muted/30'}`}
+                          onClick={item.isGroup ? () => toggleGroup(item.id) : undefined}
+                        >
+                          <td className="px-4 py-2.5 text-sm text-muted-foreground">
+                            {item.isGroup ? (
+                              expandedGroups.has(item.id)
+                                ? <ChevronDown className="h-4 w-4 text-primary" />
+                                : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-2.5 text-sm font-medium text-foreground">
+                            <div className="flex items-center gap-2">
+                              <span className={item.isGroup ? 'font-semibold' : ''}>{item.name}</span>
+                              {item.isGroup && (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-normal">
+                                  {item.children.length} locations
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-sm text-right text-muted-foreground">{formatCurrency(item.sales, currency)}</td>
+                          <td className="px-4 py-2.5 text-sm text-right font-semibold text-foreground">{formatCurrency(item.discounts, currency)}</td>
+                          <td className="px-4 py-2.5 text-sm text-right text-muted-foreground">
+                            {item.sales > 0 ? `${((item.discounts / item.sales) * 100).toFixed(1)}%` : '0%'}
+                          </td>
+                        </tr>
+
+                        {/* Expanded child rows */}
+                        {item.isGroup && expandedGroups.has(item.id) && item.children.map((child: any) => (
+                          <tr key={child.location_id} className="bg-muted/5 hover:bg-muted/15 transition-colors">
+                            <td className="px-4 py-2 text-sm text-muted-foreground" />
+                            <td className="px-4 py-2 text-sm text-muted-foreground pl-10">
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground/50">└</span>
+                                {child.location_name}
+                              </div>
+                            </td>
+                            <td className="px-4 py-2 text-sm text-right text-muted-foreground/70">{formatCurrency(child.sales, currency)}</td>
+                            <td className="px-4 py-2 text-sm text-right text-muted-foreground">{formatCurrency(child.discounts, currency)}</td>
+                            <td className="px-4 py-2 text-sm text-right text-muted-foreground/70">
+                              {child.sales > 0 ? `${((child.discounts / child.sales) * 100).toFixed(1)}%` : '0%'}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-border bg-muted/40">
+                      <td className="px-4 py-3" />
                       <td className="px-4 py-3 text-sm font-semibold text-foreground">Total</td>
                       <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">{formatCurrency(data?.total_sales || 0, currency)}</td>
                       <td className="px-4 py-3 text-sm text-right font-semibold text-primary">{formatCurrency(data?.total_discounts || 0, currency)}</td>

@@ -16,7 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import {
   DollarSign, TrendingUp, ShoppingCart, Package, Filter,
   RefreshCw, Target, BarChart3, CreditCard, Banknote, Wallet, AlertTriangle,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, Receipt, Calculator,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import React, { useMemo, useState } from 'react'
@@ -247,6 +247,7 @@ export default function AnalyticsPage() {
       top_products: Array<{ product_name: string; total_quantity: number; total_revenue: number; transaction_count: number; average_price: number }>
       refunds: { total_refunds: number; total_refund_amount: number; refund_rate: number; currency: string; by_currency?: CurrencyBreakdown[] }
       discounts?: { total_discounts: number; currency: string; by_currency?: CurrencyBreakdown[] }
+      tax?: { total_tax: number; total_tips: number; currency: string; by_currency?: CurrencyBreakdown[] }
       sales_by_location: Array<{ location_id: string; location_name: string; total_sales: number; converted_total_sales: number; total_transactions: number; average_transaction: number; currency: string; rate_to_gbp: number }>
       by_artist?: Array<{ artist_name: string; revenue: number; quantity: number; transaction_count: number }>
       exchange_rates?: Record<string, number>
@@ -281,6 +282,7 @@ export default function AnalyticsPage() {
   const hourlyData = fastData?.hourly
   const refundsData = fastData?.refunds
   const discountsData = fastData?.discounts
+  const taxData = fastData?.tax
   const salesByLocationData = fastData?.sales_by_location
 
   const byArtistData = fastData?.by_artist
@@ -561,6 +563,37 @@ export default function AnalyticsPage() {
                 annotation={<CurrencyBreakdownAnnotation breakdown={aggregationData?.by_currency} />}
               />
               <KPICard
+                title="Net Sales"
+                value={(aggregationData?.total_sales || 0) - (taxData?.total_tax || 0)}
+                format="currency"
+                currency="GBP"
+                icon={<Calculator className="h-4 w-4" />}
+                description="Excl. tax"
+                accentColor="#10b981"
+                annotation={<CurrencyBreakdownAnnotation breakdown={
+                  taxData?.by_currency && aggregationData?.by_currency
+                    ? aggregationData.by_currency.map(s => {
+                        const t = taxData.by_currency?.find(tc => tc.currency === s.currency)
+                        return {
+                          ...s,
+                          amount: s.amount - (t?.amount || 0),
+                          converted_amount: s.converted_amount - (t?.converted_amount || 0),
+                        }
+                      })
+                    : undefined
+                } />}
+              />
+              <KPICard
+                title="Tax"
+                value={taxData?.total_tax || 0}
+                format="currency"
+                currency="GBP"
+                icon={<Receipt className="h-4 w-4" />}
+                description={dateRangeLabel}
+                accentColor="#8b5cf6"
+                annotation={<CurrencyBreakdownAnnotation breakdown={taxData?.by_currency} />}
+              />
+              <KPICard
                 title="Transactions"
                 value={aggregationData?.total_transactions || 0}
                 format="number"
@@ -568,6 +601,9 @@ export default function AnalyticsPage() {
                 description={dateRangeLabel}
                 accentColor="#FB731E"
               />
+            </div>
+
+            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-6">
               <KPICard
                 title="Avg Order Value"
                 value={basketData?.average_order_value || 0}
@@ -585,9 +621,6 @@ export default function AnalyticsPage() {
                 description="Basket size"
                 accentColor="#FB731E"
               />
-            </div>
-
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-8">
               <KPICard
                 title="Total Items Sold"
                 value={basketData?.total_items || 0}
@@ -603,6 +636,9 @@ export default function AnalyticsPage() {
                 description={bestSeller ? `${bestSeller.total_quantity} units sold` : 'No data'}
                 accentColor="#6366f1"
               />
+            </div>
+
+            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-8">
               <KPICard
                 title="Discounts"
                 value={discountsData?.total_discounts || 0}

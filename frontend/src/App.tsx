@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
@@ -8,10 +9,24 @@ import AnalyticsPage from '@/pages/AnalyticsPage'
 import ReportsCatalogPage from '@/pages/ReportsCatalogPage'
 import ReportDetailPage from '@/pages/ReportDetailPage'
 import BudgetsPage from '@/pages/BudgetsPage'
+import FootfallPage from '@/pages/FootfallPage'
 import { ProtectedRoute } from '@/features/auth/components/ProtectedRoute'
 import { useAuthStore } from '@/store/authStore'
+import { usePermissionStore } from '@/store/permissionStore'
 
 function App() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const fetchPermissions = usePermissionStore((s) => s.fetchPermissions)
+  const clearPermissions = usePermissionStore((s) => s.clearPermissions)
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchPermissions()
+    } else {
+      clearPermissions()
+    }
+  }, [isAuthenticated, fetchPermissions, clearPermissions])
+
   return (
     <Router>
       <Routes>
@@ -21,7 +36,7 @@ function App() {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+            <ProtectedRoute requiredPermission="page:admin">
               <DashboardPage />
             </ProtectedRoute>
           }
@@ -29,7 +44,7 @@ function App() {
         <Route
           path="/square-accounts"
           element={
-            <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+            <ProtectedRoute requiredPermission="page:square_accounts">
               <SquareAccountsPage />
             </ProtectedRoute>
           }
@@ -37,7 +52,7 @@ function App() {
         <Route
           path="/sales"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredPermission="page:sales">
               <SalesPage />
             </ProtectedRoute>
           }
@@ -45,7 +60,7 @@ function App() {
         <Route
           path="/analytics"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredPermission="page:analytics">
               <AnalyticsPage />
             </ProtectedRoute>
           }
@@ -53,7 +68,7 @@ function App() {
         <Route
           path="/reports"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredPermission="page:reports">
               <ReportsCatalogPage />
             </ProtectedRoute>
           }
@@ -61,7 +76,7 @@ function App() {
         <Route
           path="/reports/:slug"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredPermission="page:reports">
               <ReportDetailPage />
             </ProtectedRoute>
           }
@@ -69,8 +84,16 @@ function App() {
         <Route
           path="/budgets"
           element={
-            <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+            <ProtectedRoute requiredPermission="page:budgets">
               <BudgetsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/footfall"
+          element={
+            <ProtectedRoute requiredPermission="page:footfall">
+              <FootfallPage />
             </ProtectedRoute>
           }
         />
@@ -81,7 +104,7 @@ function App() {
 }
 
 function Home() {
-  const { isAuthenticated, user } = useAuthStore()
+  const { isAuthenticated } = useAuthStore()
 
   // Redirect authenticated users to analytics
   if (isAuthenticated) {

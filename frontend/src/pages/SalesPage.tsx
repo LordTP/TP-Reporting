@@ -29,11 +29,45 @@ interface SalesTransaction {
   refund_amount: number
 }
 
+interface CurrencyBreakdown {
+  currency: string
+  amount: number
+  converted_amount: number
+  rate: number
+}
+
 interface SalesAggregation {
   total_sales: number
   total_transactions: number
   average_transaction: number
   currency: string
+  by_currency?: CurrencyBreakdown[]
+}
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  GBP: '£', EUR: '€', USD: '$', AUD: 'A$', CAD: 'C$', JPY: '¥',
+}
+
+function CurrencyBreakdownAnnotation({ breakdown }: { breakdown?: CurrencyBreakdown[] }) {
+  if (!breakdown) return null
+  const foreign = breakdown.filter(b => b.currency !== 'GBP')
+  if (foreign.length === 0) return null
+
+  return (
+    <div className="mt-1 space-y-0.5">
+      {foreign.map(b => {
+        const sym = CURRENCY_SYMBOLS[b.currency] || b.currency + ' '
+        return (
+          <p key={b.currency} className="text-[11px] text-muted-foreground leading-tight">
+            {sym}{(b.amount / 100).toLocaleString('en-GB', { minimumFractionDigits: 2 })} {b.currency}
+            {' \u2192 '}
+            £{(b.converted_amount / 100).toLocaleString('en-GB', { minimumFractionDigits: 2 })} GBP
+            <span className="opacity-60"> at {b.rate.toFixed(4)}</span>
+          </p>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function SalesPage() {
@@ -251,9 +285,7 @@ export default function SalesPage() {
                   <div className="text-2xl font-bold">
                     {formatCurrency(aggregation.total_sales, aggregation.currency)}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {aggregation.total_transactions} transactions
-                  </p>
+                  <CurrencyBreakdownAnnotation breakdown={aggregation.by_currency} />
                 </>
               ) : (
                 <div className="text-2xl font-bold">£0.00</div>
@@ -291,10 +323,10 @@ export default function SalesPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {totalCount.toLocaleString()}
+                {aggregation ? aggregation.total_transactions.toLocaleString() : totalCount.toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground">
-                All time
+                Completed transactions
               </p>
             </CardContent>
           </Card>

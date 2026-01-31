@@ -1,12 +1,12 @@
-import BudgetUpload from '@/features/budgets/BudgetUpload'
+import FootfallEntry from '@/features/footfall/FootfallEntry'
 import AppNav from '@/components/layout/AppNav'
 
-export default function BudgetsPage() {
+export default function FootfallPage() {
   return (
     <div className="min-h-screen bg-background">
       <AppNav />
       <main className="max-w-[1800px] mx-auto px-6 lg:px-8 py-8">
-        <BudgetUpload />
+        <FootfallEntry />
       </main>
     </div>
   )

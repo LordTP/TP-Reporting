@@ -29,6 +29,7 @@ class Location(Base):
     location_groups = relationship("LocationGroup", secondary="location_group_members", back_populates="locations")
     data_imports = relationship("DataImport", back_populates="location", cascade="all, delete-orphan")
     budgets = relationship("Budget", back_populates="location", cascade="all, delete-orphan")
+    footfall_entries = relationship("FootfallEntry", back_populates="location", cascade="all, delete-orphan")
     # TODO: Uncomment when Phase 6-7 models are created
     # location_permissions = relationship("UserLocationPermission", back_populates="location", cascade="all, delete-orphan")
     # dashboard_locations = relationship("DashboardLocation", back_populates="location", cascade="all, delete-orphan")

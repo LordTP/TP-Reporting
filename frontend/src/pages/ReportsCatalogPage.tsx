@@ -1,14 +1,21 @@
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
+import { usePermissionStore } from '@/store/permissionStore'
 import { REPORTS, REPORT_CATEGORIES, type ReportCategory, type ReportDefinition } from '@/config/reportCatalog'
 import { Card, CardContent } from '@/components/ui/card'
 import AppNav from '@/components/layout/AppNav'
 import { Badge } from '@/components/ui/badge'
 import { FileText, ChevronRight } from 'lucide-react'
 
+const FULL_ACCESS_ROLES = ['admin', 'superadmin']
+
 export default function ReportsCatalogPage() {
   const { user } = useAuthStore()
-  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+  const permHas = usePermissionStore((s) => s.hasPermission)
+  const hasPerm = (key: string) => {
+    if (user && FULL_ACCESS_ROLES.includes(user.role)) return true
+    return permHas(key)
+  }
   const categories: ReportCategory[] = ['sales', 'financial', 'operational']
 
   return (
@@ -32,7 +39,7 @@ export default function ReportsCatalogPage() {
         {/* Category Sections */}
         {categories.map((categoryKey) => {
           const category = REPORT_CATEGORIES[categoryKey]
-          const reports = REPORTS.filter(r => r.category === categoryKey && (!r.adminOnly || isAdmin))
+          const reports = REPORTS.filter(r => r.category === categoryKey && hasPerm(r.permissionKey))
 
           return (
             <div key={categoryKey} className="mb-10">
@@ -64,7 +71,7 @@ function ReportCard({ report }: { report: ReportDefinition }) {
   const Icon = report.icon
 
   const card = (
-    <Card className={`group relative overflow-hidden transition-all duration-200 ${
+    <Card className={`group relative overflow-hidden transition-all duration-200 h-full ${
       isAvailable
         ? 'hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
         : 'opacity-50 cursor-default'

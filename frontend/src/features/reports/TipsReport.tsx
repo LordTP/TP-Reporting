@@ -3,7 +3,8 @@ import { apiClient } from '@/lib/api-client'
 import { useReportFilters } from './useReportFilters'
 import ReportLayout from './ReportLayout'
 import KPICard from '@/components/charts/KPICard'
-import { Coins, DollarSign, Percent, Hash, Download } from 'lucide-react'
+import { Coins, DollarSign, Percent, Hash } from 'lucide-react'
+import ExportButton from '@/components/ExportButton'
 import { exportToExcel, penceToPounds, formatDateForExcel } from './exportToExcel'
 import { CurrencyBreakdownAnnotation, CurrencyBreakdownItem } from './CurrencyBreakdown'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -157,10 +158,7 @@ export default function TipsReport() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold">Tips by Location</CardTitle>
-              <button onClick={handleExport} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                <Download className="h-3.5 w-3.5" />
-                Export Excel
-              </button>
+              <ExportButton onClick={handleExport} />
             </div>
             <CardDescription>Tips received per store</CardDescription>
           </CardHeader>

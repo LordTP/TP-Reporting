@@ -3,7 +3,8 @@ import { apiClient } from '@/lib/api-client'
 import { useReportFilters } from './useReportFilters'
 import ReportLayout from './ReportLayout'
 import KPICard from '@/components/charts/KPICard'
-import { DollarSign, ShoppingCart, TrendingUp, Calendar, Download } from 'lucide-react'
+import { DollarSign, ShoppingCart, TrendingUp, Calendar } from 'lucide-react'
+import ExportButton from '@/components/ExportButton'
 import { CurrencyBreakdownAnnotation, CurrencyBreakdownItem } from './CurrencyBreakdown'
 import { exportToExcel, penceToPounds, formatDateForExcel } from './exportToExcel'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -185,10 +186,7 @@ export default function DailySalesSummaryReport() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold">Daily Breakdown</CardTitle>
-            <button onClick={handleExport} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-              <Download className="h-3.5 w-3.5" />
-              Export Excel
-            </button>
+            <ExportButton onClick={handleExport} />
           </div>
           <CardDescription>{isMultiLocation ? 'Sales per day across all locations' : 'Sales figures per day'}</CardDescription>
         </CardHeader>

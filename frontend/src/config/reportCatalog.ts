@@ -1,7 +1,7 @@
 import {
   DollarSign, ShoppingBag, Tag, MapPin, CreditCard,
   Receipt, Percent, RotateCcw, Coins,
-  Clock, Target, ShoppingCart,
+  Clock, Target, ShoppingCart, Footprints,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -15,6 +15,7 @@ export interface ReportDefinition {
   icon: LucideIcon
   status: 'available' | 'available'
   accentColor: string
+  permissionKey: string
   adminOnly?: boolean
 }
 
@@ -46,6 +47,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: DollarSign,
     status: 'available',
     accentColor: '#8b5cf6',
+    permissionKey: 'report:daily_sales_summary',
   },
   {
     slug: 'sales-by-product',
@@ -55,6 +57,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: ShoppingBag,
     status: 'available',
     accentColor: '#8b5cf6',
+    permissionKey: 'report:sales_by_product',
   },
   {
     slug: 'sales-by-category',
@@ -64,6 +67,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: Tag,
     status: 'available',
     accentColor: '#8b5cf6',
+    permissionKey: 'report:sales_by_category',
   },
   {
     slug: 'sales-by-location',
@@ -73,6 +77,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: MapPin,
     status: 'available',
     accentColor: '#8b5cf6',
+    permissionKey: 'report:sales_by_location',
   },
   {
     slug: 'sales-by-payment-method',
@@ -82,6 +87,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: CreditCard,
     status: 'available',
     accentColor: '#8b5cf6',
+    permissionKey: 'report:sales_by_payment_method',
   },
   // --- Financial Reports ---
   {
@@ -92,6 +98,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: Receipt,
     status: 'available',
     accentColor: '#10b981',
+    permissionKey: 'report:tax_report',
   },
   {
     slug: 'discount-report',
@@ -101,6 +108,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: Percent,
     status: 'available',
     accentColor: '#10b981',
+    permissionKey: 'report:discount_report',
   },
   {
     slug: 'refund-report',
@@ -110,6 +118,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: RotateCcw,
     status: 'available',
     accentColor: '#10b981',
+    permissionKey: 'report:refund_report',
   },
   {
     slug: 'tips-report',
@@ -119,6 +128,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: Coins,
     status: 'available',
     accentColor: '#10b981',
+    permissionKey: 'report:tips_report',
   },
   // --- Operational Reports ---
   {
@@ -129,6 +139,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: Clock,
     status: 'available',
     accentColor: '#f59e0b',
+    permissionKey: 'report:hourly_sales_pattern',
   },
   {
     slug: 'budget-vs-actual',
@@ -138,7 +149,7 @@ export const REPORTS: ReportDefinition[] = [
     icon: Target,
     status: 'available',
     accentColor: '#f59e0b',
-    adminOnly: true,
+    permissionKey: 'report:budget_vs_actual',
   },
   {
     slug: 'basket-analysis',
@@ -148,5 +159,16 @@ export const REPORTS: ReportDefinition[] = [
     icon: ShoppingCart,
     status: 'available',
     accentColor: '#f59e0b',
+    permissionKey: 'report:basket_analysis',
+  },
+  {
+    slug: 'footfall-metrics',
+    title: 'Footfall & Conversion',
+    description: 'Footfall counts, conversion rates, and sales-per-visitor metrics by location.',
+    category: 'operational',
+    icon: Footprints,
+    status: 'available',
+    accentColor: '#f59e0b',
+    permissionKey: 'report:footfall_metrics',
   },
 ]

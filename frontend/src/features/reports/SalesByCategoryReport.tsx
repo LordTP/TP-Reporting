@@ -4,7 +4,8 @@ import { apiClient } from '@/lib/api-client'
 import { useReportFilters } from './useReportFilters'
 import ReportLayout from './ReportLayout'
 import KPICard from '@/components/charts/KPICard'
-import { Tag, DollarSign, Hash, TrendingUp, Download } from 'lucide-react'
+import { Tag, DollarSign, Hash, TrendingUp } from 'lucide-react'
+import ExportButton from '@/components/ExportButton'
 import { exportToExcel, penceToPounds } from './exportToExcel'
 import { CurrencyBreakdownAnnotation, CurrencyBreakdownItem } from './CurrencyBreakdown'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -254,10 +255,7 @@ export default function SalesByCategoryReport() {
               <CardTitle className="text-base font-semibold">
                 {viewMode === 'category' ? 'Category Performance' : 'Product Performance'}
               </CardTitle>
-              <button onClick={handleExportCategoryProduct} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                <Download className="h-3.5 w-3.5" />
-                Export Excel
-              </button>
+              <ExportButton onClick={handleExportCategoryProduct} />
             </div>
             <CardDescription>
               {viewMode === 'category'
@@ -358,10 +356,7 @@ export default function SalesByCategoryReport() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold">Size / Variant Breakdown</CardTitle>
-              <button onClick={handleExportVariants} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                <Download className="h-3.5 w-3.5" />
-                Export Excel
-              </button>
+              <ExportButton onClick={handleExportVariants} />
             </div>
             <CardDescription>Click column headers to sort. Shows each size/variant separately.</CardDescription>
           </CardHeader>

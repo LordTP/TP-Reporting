@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.database import engine, Base
-from app.api.v1 import auth, users, organizations, square, locations, sales, dashboards, reports, permissions, budgets, clients, exchange_rates, location_groups
+from app.api.v1 import auth, users, organizations, square, locations, sales, dashboards, reports, permissions, budgets, clients, exchange_rates, location_groups, footfall
 
 
 @asynccontextmanager
@@ -52,6 +52,7 @@ app.include_router(budgets.router, prefix="/api/v1/budgets", tags=["Budgets"])
 app.include_router(clients.router, prefix="/api/v1", tags=["Clients"])
 app.include_router(exchange_rates.router, prefix="/api/v1", tags=["Exchange Rates"])
 app.include_router(location_groups.router, prefix="/api/v1", tags=["Location Groups"])
+app.include_router(footfall.router, prefix="/api/v1/footfall", tags=["Footfall"])
 
 
 @app.get("/")

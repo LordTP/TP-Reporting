@@ -204,8 +204,8 @@ def _resolve_date_range(
     """Resolve date range from preset, explicit dates, or days fallback."""
     if date_preset:
         return calculate_date_range_from_preset(date_preset)
-    s = start_date or (datetime.utcnow() - timedelta(days=days))
-    e = end_date or datetime.utcnow()
+    s = start_date or datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days)
+    e = end_date or datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
     return s, e
 
 
@@ -486,7 +486,7 @@ async def get_sales_aggregation(
         currency="GBP",
         start_date=start,
         end_date=end,
-        by_currency=list(agg_currency_breakdown.values()) if len(agg_currency_breakdown) > 1 else None,
+        by_currency=list(agg_currency_breakdown.values()) if agg_currency_breakdown and any(c != "GBP" for c in agg_currency_breakdown) else None,
     )
 
 
@@ -667,7 +667,7 @@ async def get_sales_summary(
         by_tender_type=by_tender_type,
         by_status=by_status,
         top_days=top_days,
-        by_currency=list(summary_currency_breakdown.values()) if len(summary_currency_breakdown) > 1 else None,
+        by_currency=list(summary_currency_breakdown.values()) if summary_currency_breakdown and any(c != "GBP" for c in summary_currency_breakdown) else None,
     )
 
 
@@ -707,14 +707,17 @@ async def get_sales_by_location(
         if not cat_ids:
             return {"locations": [], "by_currency": None}
 
+        from app.services.exchange_rate_service import exchange_rate_service as _fx_cat
+
         base = _base_sales_filter(filtered, start, end)
         loc_agg: Dict[str, dict] = {}
         seen_txn_per_loc: Dict[str, set] = {}
 
-        for (txn_id, loc_id, line_items_json) in db.query(
+        for (txn_id, loc_id, line_items_json, txn_currency) in db.query(
             SalesTransaction.id,
             SalesTransaction.location_id,
             SalesTransaction.line_items,
+            SalesTransaction.amount_money_currency,
         ).filter(base).yield_per(500):
             if not line_items_json:
                 continue
@@ -731,7 +734,7 @@ async def get_sales_by_location(
                 item_total = (item.get("gross_sales_money") or {}).get("amount", 0)
 
                 if loc_str not in loc_agg:
-                    loc_agg[loc_str] = {"total_sales": 0, "total_transactions": 0}
+                    loc_agg[loc_str] = {"total_sales": 0, "total_transactions": 0, "currency": txn_currency or "GBP"}
                     seen_txn_per_loc[loc_str] = set()
                 loc_agg[loc_str]["total_sales"] += item_total
 
@@ -747,27 +750,41 @@ async def get_sales_by_location(
         if not loc_agg:
             return {"locations": [], "by_currency": None}
 
-        # Resolve location names and currencies
+        # Get exchange rates and resolve location names
+        all_cur = {d["currency"] for d in loc_agg.values()}
+        rates, _ = _fx_cat.get_rates_to_gbp(db, current_user.organization_id, all_cur or {"GBP"})
+
         loc_details = db.query(Location.id, Location.name, Location.currency).filter(
             Location.id.in_(list(loc_agg.keys()))
         ).all()
         detail_map = {str(lid): (lname, lcurr) for lid, lname, lcurr in loc_details}
 
         result = []
+        loc_cur_bk: Dict[str, dict] = {}
         for loc_str, data in loc_agg.items():
-            lname, lcurr = detail_map.get(loc_str, ("Unknown", currency))
+            lname, lcurr = detail_map.get(loc_str, ("Unknown", "GBP"))
+            cur = data["currency"]
+            rate = rates.get(cur, 1.0)
+            raw_sales = data["total_sales"]
+            gbp_sales = round(raw_sales * rate)
             total_txn = data["total_transactions"]
+
+            if cur not in loc_cur_bk:
+                loc_cur_bk[cur] = {"currency": cur, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+            loc_cur_bk[cur]["amount"] += raw_sales
+            loc_cur_bk[cur]["converted_amount"] += gbp_sales
+
             result.append({
                 "location_id": loc_str,
                 "location_name": lname,
-                "total_sales": data["total_sales"],
+                "total_sales": gbp_sales,
                 "total_transactions": total_txn,
-                "average_transaction": round(data["total_sales"] / total_txn) if total_txn > 0 else 0,
-                "currency": lcurr or currency,
+                "average_transaction": round(gbp_sales / total_txn) if total_txn > 0 else 0,
+                "currency": "GBP",
             })
         return {
             "locations": sorted(result, key=lambda x: x["total_sales"], reverse=True),
-            "by_currency": None,
+            "by_currency": list(loc_cur_bk.values()) if loc_cur_bk and any(c != "GBP" for c in loc_cur_bk) else None,
         }
 
     # Location mode: SQL aggregation grouped by currency for conversion
@@ -823,7 +840,7 @@ async def get_sales_by_location(
     locations_sorted = sorted(result, key=lambda x: x["total_sales"], reverse=True)
     return {
         "locations": locations_sorted,
-        "by_currency": list(loc_cur_bk.values()) if len(loc_cur_bk) > 1 else None,
+        "by_currency": list(loc_cur_bk.values()) if loc_cur_bk and any(c != "GBP" for c in loc_cur_bk) else None,
     }
 
 
@@ -1037,10 +1054,15 @@ async def get_product_categories(
                     "quantity": 0,
                     "revenue": 0,
                     "transaction_count": 0,
+                    "_orig": {},
+                    "_orig_gbp": {},
                 }
             variant_stats[variant_key]["quantity"] += quantity
             variant_stats[variant_key]["revenue"] += item_total
             variant_stats[variant_key]["transaction_count"] += 1
+            if currency_key != "GBP":
+                variant_stats[variant_key]["_orig"][currency_key] = variant_stats[variant_key]["_orig"].get(currency_key, 0) + raw_amount
+                variant_stats[variant_key]["_orig_gbp"][currency_key] = variant_stats[variant_key]["_orig_gbp"].get(currency_key, 0) + item_total
 
             total_items += quantity
             total_revenue += item_total
@@ -1052,14 +1074,22 @@ async def get_product_categories(
 
     categories = sorted(category_stats.values(), key=lambda x: x["revenue"], reverse=True)
     products = sorted(product_stats.values(), key=lambda x: x["revenue"], reverse=True)
-    variants = sorted(variant_stats.values(), key=lambda x: x["revenue"], reverse=True)
+    # Add original_amounts to variants for multi-currency display
+    variants_list = []
+    for v in variant_stats.values():
+        entry = {k: v[k] for k in ("variant", "product_name", "variation_name", "quantity", "revenue", "transaction_count")}
+        if v["_orig"]:
+            entry["original_amounts"] = v["_orig"]
+            entry["converted_amounts"] = v["_orig_gbp"]
+        variants_list.append(entry)
+    variants = sorted(variants_list, key=lambda x: x["revenue"], reverse=True)
     return {
         "categories": categories,
         "products": products,
         "variants": variants,
         "total_items": total_items,
         "total_revenue": total_revenue,
-        "by_currency": list(cat_cur_bk.values()) if len(cat_cur_bk) > 1 else None,
+        "by_currency": list(cat_cur_bk.values()) if cat_cur_bk and any(c != "GBP" for c in cat_cur_bk) else None,
     }
 
 
@@ -1206,22 +1236,45 @@ async def get_hourly_sales(
 
     base = _base_sales_filter(filtered, start, end, completed_only=False)
 
-    # Category mode: scan line_items to filter
+    # Category mode: scan line_items to filter, with currency conversion
     if cat_ids is not None:
-        hourly_stats = {h: {"hour": h, "sales": 0, "transactions": 0, "items": 0} for h in range(24)}
-        for (txn_date, line_items_json, total_amount) in db.query(
-            SalesTransaction.transaction_date, SalesTransaction.line_items, SalesTransaction.total_money_amount,
+        from app.services.exchange_rate_service import exchange_rate_service as _fx_cat_h
+
+        # First pass: collect matched transactions and currencies
+        matched = []
+        all_cur_h: set = set()
+        for (txn_date, line_items_json, total_amount, txn_cur) in db.query(
+            SalesTransaction.transaction_date, SalesTransaction.line_items,
+            SalesTransaction.amount_money_amount, SalesTransaction.amount_money_currency,
         ).filter(base).yield_per(500):
             if not _txn_matches_category(line_items_json, cat_ids):
                 continue
+            cur = txn_cur or "GBP"
+            all_cur_h.add(cur)
+            matched.append((txn_date, int(total_amount or 0), cur, line_items_json))
+
+        rates_h, _ = _fx_cat_h.get_rates_to_gbp(db, current_user.organization_id, all_cur_h or {"GBP"})
+
+        hourly_stats = {h: {"hour": h, "sales": 0, "transactions": 0, "items": 0} for h in range(24)}
+        hourly_cur_bk_cat: Dict[str, dict] = {}
+        for txn_date, total_amount, cur, line_items_json in matched:
+            rate = rates_h.get(cur, 1.0)
+            converted = round(total_amount * rate)
             h = txn_date.hour
-            hourly_stats[h]["sales"] += int(total_amount or 0)
+            hourly_stats[h]["sales"] += converted
             hourly_stats[h]["transactions"] += 1
+            if cur not in hourly_cur_bk_cat:
+                hourly_cur_bk_cat[cur] = {"currency": cur, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+            hourly_cur_bk_cat[cur]["amount"] += total_amount
+            hourly_cur_bk_cat[cur]["converted_amount"] += converted
             if line_items_json:
                 for item in line_items_json:
                     if item.get("catalog_object_id", "") in cat_ids:
                         hourly_stats[h]["items"] += int(item.get("quantity", "1"))
-        return {"hours": sorted(hourly_stats.values(), key=lambda x: x["hour"]), "by_currency": None}
+        return {
+            "hours": sorted(hourly_stats.values(), key=lambda x: x["hour"]),
+            "by_currency": list(hourly_cur_bk_cat.values()) if hourly_cur_bk_cat and any(c != "GBP" for c in hourly_cur_bk_cat) else None,
+        }
 
     # Location mode: SQL aggregation, grouped by currency for conversion
     from app.services.exchange_rate_service import exchange_rate_service as _fx
@@ -1230,7 +1283,7 @@ async def get_hourly_sales(
     rows = db.query(
         hour_col,
         SalesTransaction.amount_money_currency,
-        func.sum(SalesTransaction.total_money_amount).label("sales"),
+        func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).label("transactions"),
     ).filter(base).group_by(hour_col, SalesTransaction.amount_money_currency).all()
 
@@ -1265,7 +1318,7 @@ async def get_hourly_sales(
 
     return {
         "hours": sorted(hourly_stats.values(), key=lambda x: x["hour"]),
-        "by_currency": list(hourly_cur_bk.values()) if len(hourly_cur_bk) > 1 else None,
+        "by_currency": list(hourly_cur_bk.values()) if hourly_cur_bk and any(c != "GBP" for c in hourly_cur_bk) else None,
     }
 
 
@@ -1609,15 +1662,14 @@ async def get_tax_summary(
 
     base = _base_sales_filter(filtered, start, end, completed_only=False)
 
-    # Category mode
+    # Category mode — with currency conversion and location breakdown
     if cat_ids is not None:
-        total_tax = 0
-        total_sales = 0
-        total_transactions = 0
-        daily_map: Dict[str, Dict[str, Any]] = {}
-        loc_map: Dict[str, Dict[str, Any]] = {}
-        currency_code = "GBP"
+        from app.services.exchange_rate_service import exchange_rate_service as _fx_tax_cat
 
+        loc_name_map = {str(loc.id): loc.name for loc in db.query(Location.id, Location.name).filter(Location.id.in_(filtered)).all()}
+
+        matched = []
+        all_cur_tax: set = set()
         for (line_items_json, tax_amt, sales_amt, txn_date, loc_id, cur) in db.query(
             SalesTransaction.line_items, SalesTransaction.total_tax_amount,
             SalesTransaction.amount_money_amount, SalesTransaction.transaction_date,
@@ -1625,69 +1677,116 @@ async def get_tax_summary(
         ).filter(base).yield_per(500):
             if not _txn_matches_category(line_items_json, cat_ids):
                 continue
-            t = int(tax_amt or 0)
-            s = int(sales_amt or 0)
-            total_tax += t
-            total_sales += s
+            c = cur or "GBP"
+            all_cur_tax.add(c)
+            matched.append((int(tax_amt or 0), int(sales_amt or 0), txn_date, str(loc_id), c))
+
+        rates_tax, _ = _fx_tax_cat.get_rates_to_gbp(db, current_user.organization_id, all_cur_tax or {"GBP"})
+
+        total_tax = 0
+        total_sales = 0
+        total_transactions = 0
+        daily_map: Dict[str, Dict[str, Any]] = {}
+        loc_map: Dict[str, Dict[str, Any]] = {}
+
+        for t, s, txn_date, loc_id, cur in matched:
+            rate = rates_tax.get(cur, 1.0)
+            conv_tax = round(t * rate)
+            conv_sales = round(s * rate)
+            total_tax += conv_tax
+            total_sales += conv_sales
             total_transactions += 1
-            currency_code = cur or currency_code
             dk = txn_date.date().isoformat()
             if dk not in daily_map:
                 daily_map[dk] = {"date": dk, "tax": 0, "sales": 0, "transactions": 0}
-            daily_map[dk]["tax"] += t
-            daily_map[dk]["sales"] += s
+            daily_map[dk]["tax"] += conv_tax
+            daily_map[dk]["sales"] += conv_sales
             daily_map[dk]["transactions"] += 1
+            if loc_id not in loc_map:
+                loc_map[loc_id] = {"location_id": loc_id, "location_name": loc_name_map.get(loc_id, "Unknown"), "tax": 0, "sales": 0, "transactions": 0}
+            loc_map[loc_id]["tax"] += conv_tax
+            loc_map[loc_id]["sales"] += conv_sales
+            loc_map[loc_id]["transactions"] += 1
 
-        # We skip by_location for category mode as location names require a join
         daily = sorted(daily_map.values(), key=lambda x: x["date"])
+        by_location = sorted(loc_map.values(), key=lambda x: x["tax"], reverse=True)
         return {
             "total_tax": total_tax, "total_sales": total_sales, "total_transactions": total_transactions,
             "tax_rate": round((total_tax / total_sales * 100) if total_sales > 0 else 0, 2),
-            "daily": daily, "by_location": [], "currency": currency_code,
+            "daily": daily, "by_location": by_location, "currency": "GBP",
         }
 
-    # Location mode
-    totals = db.query(
+    # Location mode — with currency conversion
+    from app.services.exchange_rate_service import exchange_rate_service as _fx_tax
+
+    totals_rows = db.query(
+        SalesTransaction.amount_money_currency,
         func.sum(SalesTransaction.total_tax_amount).label("total_tax"),
         func.sum(SalesTransaction.amount_money_amount).label("total_sales"),
         func.count(SalesTransaction.id).label("total_transactions"),
-    ).filter(base).first()
-
-    total_tax = int(totals.total_tax or 0)
-    total_sales = int(totals.total_sales or 0)
+    ).filter(base).group_by(SalesTransaction.amount_money_currency).all()
 
     daily_rows = db.query(
         func.date(SalesTransaction.transaction_date).label("date"),
+        SalesTransaction.amount_money_currency,
         func.sum(SalesTransaction.total_tax_amount).label("tax"),
         func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).label("transactions"),
-    ).filter(base).group_by(func.date(SalesTransaction.transaction_date)).order_by(func.date(SalesTransaction.transaction_date)).all()
-
-    daily = [
-        {"date": row.date.isoformat(), "tax": int(row.tax or 0), "sales": int(row.sales or 0), "transactions": int(row.transactions or 0)}
-        for row in daily_rows
-    ]
+    ).filter(base).group_by(func.date(SalesTransaction.transaction_date), SalesTransaction.amount_money_currency).order_by(func.date(SalesTransaction.transaction_date)).all()
 
     loc_rows = db.query(
+        Location.id.label("location_id"),
         Location.name.label("location_name"),
+        SalesTransaction.amount_money_currency,
         func.sum(SalesTransaction.total_tax_amount).label("tax"),
         func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).label("transactions"),
-    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(Location.name).order_by(desc("tax")).all()
+    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(Location.id, Location.name, SalesTransaction.amount_money_currency).order_by(desc("tax")).all()
 
-    by_location = [
-        {"location_name": row.location_name, "tax": int(row.tax or 0), "sales": int(row.sales or 0), "transactions": int(row.transactions or 0)}
-        for row in loc_rows
-    ]
+    all_cur_tax = {r.amount_money_currency or "GBP" for r in totals_rows}
+    for r in daily_rows:
+        all_cur_tax.add(r.amount_money_currency or "GBP")
+    for r in loc_rows:
+        all_cur_tax.add(r.amount_money_currency or "GBP")
+    rates_tax, _ = _fx_tax.get_rates_to_gbp(db, current_user.organization_id, all_cur_tax or {"GBP"})
 
-    sample = db.query(SalesTransaction.amount_money_currency).filter(base).limit(1).first()
-    currency_code = sample[0] if sample else "GBP"
+    total_tax = 0
+    total_sales = 0
+    total_transactions = 0
+    for row in totals_rows:
+        cur = row.amount_money_currency or "GBP"
+        rate = rates_tax.get(cur, 1.0)
+        total_tax += round(int(row.total_tax or 0) * rate)
+        total_sales += round(int(row.total_sales or 0) * rate)
+        total_transactions += int(row.total_transactions or 0)
+
+    daily_agg: Dict[str, dict] = {}
+    for row in daily_rows:
+        dk = row.date.isoformat()
+        rate = rates_tax.get(row.amount_money_currency or "GBP", 1.0)
+        if dk not in daily_agg:
+            daily_agg[dk] = {"date": dk, "tax": 0, "sales": 0, "transactions": 0}
+        daily_agg[dk]["tax"] += round(int(row.tax or 0) * rate)
+        daily_agg[dk]["sales"] += round(int(row.sales or 0) * rate)
+        daily_agg[dk]["transactions"] += int(row.transactions or 0)
+    daily = sorted(daily_agg.values(), key=lambda x: x["date"])
+
+    loc_agg: Dict[str, dict] = {}
+    for row in loc_rows:
+        lid = str(row.location_id)
+        rate = rates_tax.get(row.amount_money_currency or "GBP", 1.0)
+        if lid not in loc_agg:
+            loc_agg[lid] = {"location_id": lid, "location_name": row.location_name, "tax": 0, "sales": 0, "transactions": 0}
+        loc_agg[lid]["tax"] += round(int(row.tax or 0) * rate)
+        loc_agg[lid]["sales"] += round(int(row.sales or 0) * rate)
+        loc_agg[lid]["transactions"] += int(row.transactions or 0)
+    by_location = sorted(loc_agg.values(), key=lambda x: x["tax"], reverse=True)
 
     return {
         "total_tax": total_tax, "total_sales": total_sales,
-        "total_transactions": int(totals.total_transactions or 0),
+        "total_transactions": total_transactions,
         "tax_rate": round((total_tax / total_sales * 100) if total_sales > 0 else 0, 2),
-        "daily": daily, "by_location": by_location, "currency": currency_code,
+        "daily": daily, "by_location": by_location, "currency": "GBP",
     }
 
 
@@ -1723,46 +1822,77 @@ async def get_discount_summary(
 
     # ── category mode: iterate transactions and filter by line_items ──
     if cat_ids is not None:
+        from app.services.exchange_rate_service import exchange_rate_service as _fx_cat
+
         rows = db.query(
             SalesTransaction.transaction_date,
             SalesTransaction.total_discount_amount,
             SalesTransaction.amount_money_amount,
             SalesTransaction.amount_money_currency,
+            SalesTransaction.location_id,
             SalesTransaction.raw_data,
         ).filter(base).yield_per(500)
+
+        # Build location name lookup
+        loc_name_map = {str(loc.id): loc.name for loc in db.query(Location.id, Location.name).filter(Location.id.in_(filtered)).all()}
+
+        # Collect all currencies first pass isn't needed — collect during iteration
+        all_currencies: set = set()
+        matched_txns = []
+        for txn_date, disc_amt, sale_amt, curr, loc_id, raw_data_json in rows:
+            line_items = raw_data_json.get("line_items", []) if raw_data_json else []
+            if not _txn_matches_category(line_items, cat_ids):
+                continue
+            cur = curr or "GBP"
+            all_currencies.add(cur)
+            matched_txns.append((txn_date, int(disc_amt or 0), int(sale_amt or 0), cur, str(loc_id), raw_data_json))
+
+        rates, _ = _fx_cat.get_rates_to_gbp(db, current_user.organization_id, all_currencies or {"GBP"})
 
         total_discounts = 0
         total_sales = 0
         total_transactions = 0
-        currency_code = "GBP"
         daily_agg: Dict[str, Dict[str, int]] = {}
+        loc_agg: Dict[str, dict] = {}
+        disc_cur_bk: Dict[str, dict] = {}
         discount_code_stats: Dict[str, Dict[str, Any]] = {}
 
-        for txn_date, disc_amt, sale_amt, curr, raw_data_json in rows:
-            line_items = raw_data_json.get("line_items", []) if raw_data_json else []
-            if not _txn_matches_category(line_items, cat_ids):
-                continue
+        for txn_date, disc_val, sale_val, cur, loc_id, raw_data_json in matched_txns:
+            rate = rates.get(cur, 1.0)
+            conv_disc = round(disc_val * rate)
+            conv_sale = round(sale_val * rate)
 
-            disc_val = int(disc_amt or 0)
-            sale_val = int(sale_amt or 0)
-            total_discounts += disc_val
-            total_sales += sale_val
+            total_discounts += conv_disc
+            total_sales += conv_sale
             total_transactions += 1
-            currency_code = curr or currency_code
 
+            # Currency breakdown
+            if cur not in disc_cur_bk:
+                disc_cur_bk[cur] = {"currency": cur, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+            disc_cur_bk[cur]["amount"] += disc_val
+            disc_cur_bk[cur]["converted_amount"] += conv_disc
+
+            # Daily
             d_key = txn_date.date().isoformat() if hasattr(txn_date, "date") else str(txn_date)[:10]
             if d_key not in daily_agg:
                 daily_agg[d_key] = {"discounts": 0, "sales": 0, "transactions": 0}
-            daily_agg[d_key]["discounts"] += disc_val
-            daily_agg[d_key]["sales"] += sale_val
+            daily_agg[d_key]["discounts"] += conv_disc
+            daily_agg[d_key]["sales"] += conv_sale
             daily_agg[d_key]["transactions"] += 1
+
+            # By location
+            if loc_id not in loc_agg:
+                loc_agg[loc_id] = {"location_id": loc_id, "location_name": loc_name_map.get(loc_id, "Unknown"), "discounts": 0, "sales": 0, "transactions": 0}
+            loc_agg[loc_id]["discounts"] += conv_disc
+            loc_agg[loc_id]["sales"] += conv_sale
+            loc_agg[loc_id]["transactions"] += 1
 
             # Parse discount codes
             if raw_data_json and disc_val > 0:
                 for disc in raw_data_json.get("discounts", []):
                     name = disc.get("name") or "Unnamed Discount"
                     disc_type = disc.get("type", "UNKNOWN")
-                    applied = disc.get("applied_money", {}).get("amount", 0)
+                    applied = round(disc.get("applied_money", {}).get("amount", 0) * rate)
                     percentage = disc.get("percentage")
                     if name not in discount_code_stats:
                         discount_code_stats[name] = {"name": name, "type": disc_type, "percentage": percentage, "total_amount": 0, "usage_count": 0}
@@ -1774,6 +1904,7 @@ async def get_discount_summary(
             key=lambda x: x["date"],
         )
         by_code = sorted(discount_code_stats.values(), key=lambda x: x["total_amount"], reverse=True)
+        by_location = sorted(loc_agg.values(), key=lambda x: x["discounts"], reverse=True)
 
         return {
             "total_discounts": total_discounts,
@@ -1781,9 +1912,10 @@ async def get_discount_summary(
             "total_transactions": total_transactions,
             "discount_rate": round((total_discounts / total_sales * 100) if total_sales > 0 else 0, 2),
             "daily": daily,
-            "by_location": [],
+            "by_location": by_location,
             "by_code": by_code,
-            "currency": currency_code,
+            "currency": "GBP",
+            "by_currency": list(disc_cur_bk.values()) if disc_cur_bk and any(c != "GBP" for c in disc_cur_bk) else None,
         }
 
     # ── location mode: SQL aggregation with multi-currency conversion ──
@@ -1812,12 +1944,13 @@ async def get_discount_summary(
 
     # By location grouped by currency
     loc_rows = db.query(
+        Location.id.label("location_id"),
         Location.name.label("location_name"),
         SalesTransaction.amount_money_currency,
         func.sum(SalesTransaction.total_discount_amount).label("discounts"),
         func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).label("transactions"),
-    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(Location.name, SalesTransaction.amount_money_currency).all()
+    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(Location.id, Location.name, SalesTransaction.amount_money_currency).all()
 
     for r in loc_rows:
         all_cur.add(r.amount_money_currency or "GBP")
@@ -1857,11 +1990,12 @@ async def get_discount_summary(
     loc_map: Dict[str, dict] = {}
     for row in loc_rows:
         rate = rates.get(row.amount_money_currency or "GBP", 1.0)
-        if row.location_name not in loc_map:
-            loc_map[row.location_name] = {"location_name": row.location_name, "discounts": 0, "sales": 0, "transactions": 0}
-        loc_map[row.location_name]["discounts"] += round(int(row.discounts or 0) * rate)
-        loc_map[row.location_name]["sales"] += round(int(row.sales or 0) * rate)
-        loc_map[row.location_name]["transactions"] += int(row.transactions or 0)
+        lid = str(row.location_id)
+        if lid not in loc_map:
+            loc_map[lid] = {"location_id": lid, "location_name": row.location_name, "discounts": 0, "sales": 0, "transactions": 0}
+        loc_map[lid]["discounts"] += round(int(row.discounts or 0) * rate)
+        loc_map[lid]["sales"] += round(int(row.sales or 0) * rate)
+        loc_map[lid]["transactions"] += int(row.transactions or 0)
     by_location = sorted(loc_map.values(), key=lambda x: x["discounts"], reverse=True)
 
     # By discount code/name – parse from raw_data JSONB
@@ -1903,7 +2037,7 @@ async def get_discount_summary(
         "by_location": by_location,
         "by_code": by_code,
         "currency": "GBP",
-        "by_currency": list(disc_cur_bk.values()) if len(disc_cur_bk) > 1 else None,
+        "by_currency": list(disc_cur_bk.values()) if disc_cur_bk and any(c != "GBP" for c in disc_cur_bk) else None,
     }
 
 
@@ -1939,51 +2073,76 @@ async def get_tips_summary(
 
     # ── category mode: iterate transactions and filter by line_items ──
     if cat_ids is not None:
-        rows = db.query(
+        from app.services.exchange_rate_service import exchange_rate_service as _fx_tips_cat
+
+        loc_name_map = {str(loc.id): loc.name for loc in db.query(Location.id, Location.name).filter(Location.id.in_(filtered)).all()}
+
+        # First pass: collect matched transactions and currencies
+        matched_tips = []
+        all_cur_tips: set = set()
+        for txn_date, tip_amt, sale_amt, curr, tender, loc_id, raw_data_json in db.query(
             SalesTransaction.transaction_date,
             SalesTransaction.total_tip_amount,
             SalesTransaction.amount_money_amount,
             SalesTransaction.amount_money_currency,
             SalesTransaction.tender_type,
+            SalesTransaction.location_id,
             SalesTransaction.raw_data,
-        ).filter(base).yield_per(500)
+        ).filter(base).yield_per(500):
+            line_items = raw_data_json.get("line_items", []) if raw_data_json else []
+            if not _txn_matches_category(line_items, cat_ids):
+                continue
+            cur = curr or "GBP"
+            all_cur_tips.add(cur)
+            matched_tips.append((txn_date, int(tip_amt or 0), int(sale_amt or 0), cur, tender, str(loc_id)))
+
+        rates_tips, _ = _fx_tips_cat.get_rates_to_gbp(db, current_user.organization_id, all_cur_tips or {"GBP"})
 
         total_tips = 0
         total_sales = 0
         total_transactions = 0
         tipped_transactions = 0
-        currency_code = "GBP"
         daily_agg: Dict[str, Dict[str, int]] = {}
         method_agg: Dict[str, Dict[str, int]] = {}
+        loc_agg: Dict[str, Dict[str, Any]] = {}
+        tips_cur_bk_cat: Dict[str, dict] = {}
 
-        for txn_date, tip_amt, sale_amt, curr, tender, raw_data_json in rows:
-            line_items = raw_data_json.get("line_items", []) if raw_data_json else []
-            if not _txn_matches_category(line_items, cat_ids):
-                continue
-
-            tip_val = int(tip_amt or 0)
-            sale_val = int(sale_amt or 0)
-            total_tips += tip_val
-            total_sales += sale_val
+        for txn_date, tip_val, sale_val, cur, tender, loc_id in matched_tips:
+            rate = rates_tips.get(cur, 1.0)
+            conv_tip = round(tip_val * rate)
+            conv_sale = round(sale_val * rate)
+            total_tips += conv_tip
+            total_sales += conv_sale
             total_transactions += 1
             if tip_val > 0:
                 tipped_transactions += 1
-            currency_code = curr or currency_code
+
+            if cur not in tips_cur_bk_cat:
+                tips_cur_bk_cat[cur] = {"currency": cur, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+            tips_cur_bk_cat[cur]["amount"] += tip_val
+            tips_cur_bk_cat[cur]["converted_amount"] += conv_tip
 
             d_key = txn_date.date().isoformat() if hasattr(txn_date, "date") else str(txn_date)[:10]
             if d_key not in daily_agg:
                 daily_agg[d_key] = {"tips": 0, "sales": 0, "tipped_count": 0}
-            daily_agg[d_key]["tips"] += tip_val
-            daily_agg[d_key]["sales"] += sale_val
+            daily_agg[d_key]["tips"] += conv_tip
+            daily_agg[d_key]["sales"] += conv_sale
             if tip_val > 0:
                 daily_agg[d_key]["tipped_count"] += 1
 
             method = tender or "UNKNOWN"
             if method not in method_agg:
                 method_agg[method] = {"tips": 0, "tipped_count": 0}
-            method_agg[method]["tips"] += tip_val
+            method_agg[method]["tips"] += conv_tip
             if tip_val > 0:
                 method_agg[method]["tipped_count"] += 1
+
+            if loc_id not in loc_agg:
+                loc_agg[loc_id] = {"location_id": loc_id, "location_name": loc_name_map.get(loc_id, "Unknown"), "tips": 0, "sales": 0, "tipped_count": 0}
+            loc_agg[loc_id]["tips"] += conv_tip
+            loc_agg[loc_id]["sales"] += conv_sale
+            if tip_val > 0:
+                loc_agg[loc_id]["tipped_count"] += 1
 
         daily = sorted(
             [{"date": k, "tips": v["tips"], "sales": v["sales"], "tipped_count": v["tipped_count"]} for k, v in daily_agg.items()],
@@ -1993,6 +2152,7 @@ async def get_tips_summary(
             [{"method": k, "tips": v["tips"], "tipped_count": v["tipped_count"]} for k, v in method_agg.items()],
             key=lambda x: x["tips"], reverse=True,
         )
+        by_location = sorted(loc_agg.values(), key=lambda x: x["tips"], reverse=True)
 
         return {
             "total_tips": total_tips,
@@ -2001,9 +2161,10 @@ async def get_tips_summary(
             "tipped_transactions": tipped_transactions,
             "tip_rate": round((total_tips / total_sales * 100) if total_sales > 0 else 0, 2),
             "daily": daily,
-            "by_location": [],
+            "by_location": by_location,
             "by_method": by_method,
-            "currency": currency_code,
+            "currency": "GBP",
+            "by_currency": list(tips_cur_bk_cat.values()) if tips_cur_bk_cat and any(c != "GBP" for c in tips_cur_bk_cat) else None,
         }
 
     # ── location mode: SQL aggregation with multi-currency conversion ──
@@ -2120,7 +2281,7 @@ async def get_tips_summary(
         "by_location": by_location,
         "by_method": by_method,
         "currency": "GBP",
-        "by_currency": list(tips_cur_bk.values()) if len(tips_cur_bk) > 1 else None,
+        "by_currency": list(tips_cur_bk.values()) if tips_cur_bk and any(c != "GBP" for c in tips_cur_bk) else None,
     }
 
 
@@ -2220,6 +2381,7 @@ async def get_fast_analytics(
     currency_breakdown: Dict[str, dict] = {}
     refund_currency_breakdown: Dict[str, dict] = {}
     discount_currency_breakdown: Dict[str, dict] = {}
+    tax_currency_breakdown: Dict[str, dict] = {}
 
     for row in rows:
         rate = rates_to_gbp.get(row.currency, 1.0)
@@ -2251,6 +2413,13 @@ async def get_fast_analytics(
                 discount_currency_breakdown[curr] = {"currency": curr, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
             discount_currency_breakdown[curr]["amount"] += row.total_discounts
             discount_currency_breakdown[curr]["converted_amount"] += converted_discounts
+
+        # Track tax per-currency breakdown
+        if row.total_tax and row.total_tax > 0:
+            if curr not in tax_currency_breakdown:
+                tax_currency_breakdown[curr] = {"currency": curr, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+            tax_currency_breakdown[curr]["amount"] += row.total_tax
+            tax_currency_breakdown[curr]["converted_amount"] += converted_tax
 
         # Track refund per-currency breakdown
         if row.total_refund_amount and row.total_refund_amount > 0:
@@ -2381,6 +2550,12 @@ async def get_fast_analytics(
             "currency": "GBP",
             "by_currency": list(discount_currency_breakdown.values()),
         },
+        "tax": {
+            "total_tax": total_tax,
+            "total_tips": total_tips,
+            "currency": "GBP",
+            "by_currency": list(tax_currency_breakdown.values()),
+        },
         "sales_by_location": sorted(by_location.values(), key=lambda x: x["converted_total_sales"], reverse=True),
         "exchange_rates": exchange_rates_resp,
     }
@@ -2459,11 +2634,13 @@ async def _fast_summary_category_mode(
     # Scan transactions, filter at line-item level
     total_sales = 0
     total_discounts = 0
+    total_tax = 0
     total_transactions_with_match = 0
     total_items = 0
     total_refund_amount = 0
     total_refund_count = 0
     discount_currency_breakdown: Dict[str, dict] = {}
+    tax_currency_breakdown: Dict[str, dict] = {}
     by_day: Dict[str, dict] = {}
     by_location: Dict[str, dict] = {}
     product_agg: Dict[str, dict] = defaultdict(lambda: {"qty": 0, "revenue": 0, "tx": 0})
@@ -2473,7 +2650,7 @@ async def _fast_summary_category_mode(
     by_hour_agg: Dict[int, dict] = defaultdict(lambda: {"sales": 0, "transactions": 0, "items": 0})
     seen_txn_ids: set = set()
 
-    for (txn_id, txn_date, loc_id, currency, line_items_json, order_amount, order_discount) in db.query(
+    for (txn_id, txn_date, loc_id, currency, line_items_json, order_amount, order_discount, order_tax) in db.query(
         SalesTransaction.id,
         SalesTransaction.transaction_date,
         SalesTransaction.location_id,
@@ -2481,6 +2658,7 @@ async def _fast_summary_category_mode(
         SalesTransaction.line_items,
         SalesTransaction.amount_money_amount,
         SalesTransaction.total_discount_amount,
+        SalesTransaction.total_tax_amount,
     ).filter(base).yield_per(500):
         if not line_items_json:
             continue
@@ -2532,6 +2710,18 @@ async def _fast_summary_category_mode(
                 txn_discount = order_discount or 0
                 converted_discount = round(txn_discount * rate)
                 total_discounts += converted_discount
+
+                # Tax
+                txn_tax = order_tax or 0
+                converted_tax = round(txn_tax * rate)
+                total_tax += converted_tax
+
+                # Per-currency tax breakdown
+                if txn_tax > 0:
+                    if currency not in tax_currency_breakdown:
+                        tax_currency_breakdown[currency] = {"currency": currency, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+                    tax_currency_breakdown[currency]["amount"] += txn_tax
+                    tax_currency_breakdown[currency]["converted_amount"] += converted_tax
 
                 # Per-currency breakdown (sales)
                 if currency not in currency_breakdown:
@@ -2692,6 +2882,12 @@ async def _fast_summary_category_mode(
             "currency": "GBP",
             "by_currency": list(discount_currency_breakdown.values()),
         },
+        "tax": {
+            "total_tax": total_tax,
+            "total_tips": 0,
+            "currency": "GBP",
+            "by_currency": list(tax_currency_breakdown.values()),
+        },
         "sales_by_location": sorted(by_location.values(), key=lambda x: x["converted_total_sales"], reverse=True),
         "by_artist": by_artist,
         "exchange_rates": exchange_rates_resp,
@@ -2711,6 +2907,7 @@ def _empty_fast_summary():
         "top_products": [],
         "refunds": {"total_refunds": 0, "total_refund_amount": 0, "refund_rate": 0, "currency": "GBP", "by_currency": []},
         "discounts": {"total_discounts": 0, "currency": "GBP"},
+        "tax": {"total_tax": 0, "total_tips": 0, "currency": "GBP"},
         "sales_by_location": [],
         "exchange_rates": {},
     }
