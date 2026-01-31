@@ -77,6 +77,10 @@ frontend/.cache/
 *.pid
 docker-compose.override.yml
 
+# Celery
+celerybeat-schedule
+celerybeat-schedule.db
+
 # Backup files
 *.bak
 *.backup
