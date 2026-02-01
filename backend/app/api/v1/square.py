@@ -501,7 +501,22 @@ async def reset_stuck_import(
     db.commit()
     db.refresh(data_import)
 
-    return ImportStatus.model_validate(data_import)
+    return ImportStatus(
+        id=str(data_import.id),
+        square_account_id=str(data_import.square_account_id),
+        location_id=str(data_import.location_id) if data_import.location_id else None,
+        import_type=data_import.import_type.value if hasattr(data_import.import_type, 'value') else data_import.import_type,
+        start_date=data_import.start_date,
+        end_date=data_import.end_date,
+        status=data_import.status.value if hasattr(data_import.status, 'value') else data_import.status,
+        total_transactions=data_import.total_transactions,
+        imported_transactions=data_import.imported_transactions,
+        duplicate_transactions=data_import.duplicate_transactions,
+        error_message=data_import.error_message,
+        started_at=data_import.started_at,
+        completed_at=data_import.completed_at,
+        created_at=data_import.created_at,
+    )
 
 
 @router.post("/sync", response_model=SyncResponse)

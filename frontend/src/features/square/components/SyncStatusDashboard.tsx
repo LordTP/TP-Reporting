@@ -2,6 +2,7 @@
  * Sync Status Dashboard Component
  * View sync progress and recent imports
  */
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { squareApi } from '../api/squareApi'
 import { Button } from '@/components/ui/button'
@@ -25,10 +26,15 @@ interface SyncStatusDashboardProps {
 
 export default function SyncStatusDashboard({ accountId, onClose }: SyncStatusDashboardProps) {
   const queryClient = useQueryClient()
+  const [resettingId, setResettingId] = useState<string | null>(null)
 
   const resetImportMutation = useMutation({
-    mutationFn: (importId: string) => squareApi.resetImport(importId),
-    onSuccess: () => {
+    mutationFn: (importId: string) => {
+      setResettingId(importId)
+      return squareApi.resetImport(importId)
+    },
+    onSettled: () => {
+      setResettingId(null)
       queryClient.invalidateQueries({ queryKey: ['square-sync-status', accountId] })
     },
   })
@@ -175,10 +181,13 @@ export default function SyncStatusDashboard({ accountId, onClose }: SyncStatusDa
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => resetImportMutation.mutate(importJob.id)}
-                                  disabled={resetImportMutation.isPending}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (!resettingId) resetImportMutation.mutate(importJob.id)
+                                  }}
+                                  disabled={resettingId !== null}
                                 >
-                                  {resetImportMutation.isPending ? (
+                                  {resettingId === importJob.id ? (
                                     <Loader2 className="h-3 w-3 animate-spin mr-1" />
                                   ) : (
                                     <XCircle className="h-3 w-3 mr-1" />
