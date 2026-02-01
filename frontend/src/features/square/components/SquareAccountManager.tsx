@@ -55,6 +55,17 @@ export default function SquareAccountManager() {
     },
   })
 
+  // Sync data (payments/orders) mutation
+  const [syncDataResult, setSyncDataResult] = useState<string | null>(null)
+  const syncDataMutation = useMutation({
+    mutationFn: (accountId: string) => squareApi.triggerSync({ square_account_id: accountId }),
+    onSuccess: (data) => {
+      setSyncDataResult(data.message || 'Sync triggered successfully')
+      setTimeout(() => setSyncDataResult(null), 5000)
+      queryClient.invalidateQueries({ queryKey: ['square-accounts'] })
+    },
+  })
+
   // Sync catalog mutation
   const [catalogSyncResult, setCatalogSyncResult] = useState<string | null>(null)
   const syncCatalogMutation = useMutation({
@@ -204,6 +215,21 @@ export default function SquareAccountManager() {
                     variant="outline"
                     size="sm"
                     className="w-full"
+                    onClick={() => syncDataMutation.mutate(account.id)}
+                    disabled={syncDataMutation.isPending}
+                  >
+                    <RefreshCw
+                      className={`mr-2 h-4 w-4 ${
+                        syncDataMutation.isPending ? 'animate-spin' : ''
+                      }`}
+                    />
+                    {syncDataMutation.isPending ? 'Syncing Data...' : 'Sync Data Now'}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
                     onClick={() => syncCatalogMutation.mutate(account.id)}
                     disabled={syncCatalogMutation.isPending}
                   >
@@ -248,6 +274,18 @@ export default function SquareAccountManager() {
             </Card>
           ))}
         </div>
+      )}
+
+      {syncDataResult && (
+        <Alert>
+          <AlertDescription>{syncDataResult}</AlertDescription>
+        </Alert>
+      )}
+
+      {syncDataMutation.isError && (
+        <Alert variant="destructive">
+          <AlertDescription>Failed to sync data. Please try again.</AlertDescription>
+        </Alert>
       )}
 
       {catalogSyncResult && (

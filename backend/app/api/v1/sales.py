@@ -447,59 +447,87 @@ async def get_sales_aggregation(
     if cat_ids is not None:
         if not cat_ids:
             return SalesAggregation(total_sales=0, total_transactions=0, average_transaction=0, currency="GBP", start_date=start, end_date=end)
-        base = _base_sales_filter(filtered, start, end)
+        base = _base_sales_filter(filtered, start, end, completed_only=False)
         all_cur: set = set()
         raw_rows = []
-        for (line_items_json, amount, cur) in db.query(
-            SalesTransaction.line_items, SalesTransaction.amount_money_amount, SalesTransaction.amount_money_currency
+        for (line_items_json, gross, net, cur) in db.query(
+            SalesTransaction.line_items, SalesTransaction.total_money_amount, SalesTransaction.amount_money_amount, SalesTransaction.amount_money_currency
         ).filter(base).yield_per(500):
             if not _txn_matches_category(line_items_json, cat_ids):
                 continue
-            raw_rows.append((int(amount or 0), cur or "GBP"))
+            raw_rows.append((int(gross or 0), int(net or 0), cur or "GBP"))
             all_cur.add(cur or "GBP")
         rates, _ = _fx.get_rates_to_gbp(db, current_user.organization_id, all_cur or {"GBP"})
-        total_sales = sum(round(amt * rates.get(c, 1.0)) for amt, c in raw_rows)
+        total_gross = sum(round(g * rates.get(c, 1.0)) for g, n, c in raw_rows)
+        total_net = sum(round(n * rates.get(c, 1.0)) for g, n, c in raw_rows)
+        total_refunds = total_gross - total_net
         total_transactions = len(raw_rows)
-        avg_txn = int(total_sales / total_transactions) if total_transactions > 0 else 0
-        return SalesAggregation(total_sales=total_sales, total_transactions=total_transactions, average_transaction=avg_txn, currency="GBP", start_date=start, end_date=end)
+        avg_txn = int(total_gross / total_transactions) if total_transactions > 0 else 0
+        return SalesAggregation(total_sales=total_gross, total_refunds=total_refunds, net_sales=total_net, total_transactions=total_transactions, average_transaction=avg_txn, currency="GBP", start_date=start, end_date=end)
 
     # Group by currency so we can convert all to GBP
     rows = db.query(
         SalesTransaction.amount_money_currency,
-        func.sum(SalesTransaction.amount_money_amount).label("total_sales"),
+        func.sum(SalesTransaction.total_money_amount).label("gross_sales"),
+        func.sum(SalesTransaction.amount_money_amount).label("net_sales"),
         func.count(SalesTransaction.id).label("total_transactions"),
     ).filter(
-        _base_sales_filter(filtered, start, end),
+        _base_sales_filter(filtered, start, end, completed_only=False),
     ).group_by(SalesTransaction.amount_money_currency).all()
 
     all_cur = {r.amount_money_currency or "GBP" for r in rows}
     rates, _ = _fx.get_rates_to_gbp(db, current_user.organization_id, all_cur or {"GBP"})
 
-    total_sales = 0
+    total_gross = 0
+    total_net = 0
     total_transactions = 0
-    agg_currency_breakdown: Dict[str, dict] = {}
+    gross_cur_bk: Dict[str, dict] = {}
+    refund_cur_bk: Dict[str, dict] = {}
+    net_cur_bk: Dict[str, dict] = {}
     for row in rows:
         cur = row.amount_money_currency or "GBP"
         rate = rates.get(cur, 1.0)
-        raw_amount = int(row.total_sales or 0)
-        converted = round(raw_amount * rate)
-        total_sales += converted
+        raw_gross = int(row.gross_sales or 0)
+        raw_net = int(row.net_sales or 0)
+        raw_refund = raw_gross - raw_net
+        converted_gross = round(raw_gross * rate)
+        converted_net = round(raw_net * rate)
+        converted_refund = round(raw_refund * rate)
+        total_gross += converted_gross
+        total_net += converted_net
         total_transactions += int(row.total_transactions or 0)
-        if cur not in agg_currency_breakdown:
-            agg_currency_breakdown[cur] = {"currency": cur, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
-        agg_currency_breakdown[cur]["amount"] += raw_amount
-        agg_currency_breakdown[cur]["converted_amount"] += converted
+        if cur not in gross_cur_bk:
+            gross_cur_bk[cur] = {"currency": cur, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+        gross_cur_bk[cur]["amount"] += raw_gross
+        gross_cur_bk[cur]["converted_amount"] += converted_gross
+        if raw_refund != 0:
+            if cur not in refund_cur_bk:
+                refund_cur_bk[cur] = {"currency": cur, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+            refund_cur_bk[cur]["amount"] += raw_refund
+            refund_cur_bk[cur]["converted_amount"] += converted_refund
+        if cur not in net_cur_bk:
+            net_cur_bk[cur] = {"currency": cur, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
+        net_cur_bk[cur]["amount"] += raw_net
+        net_cur_bk[cur]["converted_amount"] += converted_net
 
-    avg_txn = int(total_sales / total_transactions) if total_transactions > 0 else 0
+    total_refunds = total_gross - total_net
+    avg_txn = int(total_gross / total_transactions) if total_transactions > 0 else 0
+
+    def _has_foreign(d: Dict) -> bool:
+        return bool(d) and any(c != "GBP" for c in d)
 
     return SalesAggregation(
-        total_sales=total_sales,
+        total_sales=total_gross,
+        total_refunds=total_refunds,
+        net_sales=total_net,
         total_transactions=total_transactions,
         average_transaction=avg_txn,
         currency="GBP",
         start_date=start,
         end_date=end,
-        by_currency=list(agg_currency_breakdown.values()) if agg_currency_breakdown and any(c != "GBP" for c in agg_currency_breakdown) else None,
+        by_currency=list(gross_cur_bk.values()) if _has_foreign(gross_cur_bk) else None,
+        refunds_by_currency=list(refund_cur_bk.values()) if _has_foreign(refund_cur_bk) else None,
+        net_by_currency=list(net_cur_bk.values()) if _has_foreign(net_cur_bk) else None,
     )
 
 
@@ -1640,6 +1668,90 @@ async def get_refunds_daily(
     for row in result:
         row["refund_rate"] = round((row["refund_count"] / row["total_orders"] * 100) if row["total_orders"] > 0 else 0, 2)
     return result
+
+
+# ─────────────────────────────────────────────────
+# REFUNDED PRODUCTS (line-item detail for refund report)
+# ─────────────────────────────────────────────────
+
+
+@router.get("/analytics/refunded-products", response_model=List[Dict[str, Any]])
+async def get_refunded_products(
+    days: int = Query(60, ge=1, le=365),
+    location_ids: Optional[str] = Query(None),
+    client_id: Optional[str] = Query(None),
+    date_preset: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get individual refunded product line items for the refund report."""
+    accessible = get_accessible_locations(db, current_user)
+    client_id = _effective_client_id(current_user, client_id, db)
+    allowed = _get_allowed_client_ids(current_user, db)
+    ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
+    filtered = ctx["location_ids"]
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+
+    if not filtered:
+        return []
+
+    from app.services.exchange_rate_service import exchange_rate_service as _fx
+
+    base = _base_sales_filter(filtered, start, end, completed_only=False)
+
+    # Query transactions that have returns
+    rows = db.query(
+        SalesTransaction.transaction_date,
+        SalesTransaction.raw_data,
+        SalesTransaction.amount_money_currency,
+        SalesTransaction.location_id,
+    ).filter(base).yield_per(500).all()
+
+    # Build location name lookup
+    loc_name_map = {
+        str(loc.id): loc.name
+        for loc in db.query(Location.id, Location.name).filter(Location.id.in_(filtered)).all()
+    }
+
+    all_cur: set = set()
+    products = []
+
+    for (txn_date, raw_data_json, cur, loc_id) in rows:
+        if not raw_data_json:
+            continue
+        returns = raw_data_json.get("returns", [])
+        if not returns:
+            continue
+        all_cur.add(cur or "GBP")
+
+        for ret in returns:
+            return_line_items = ret.get("return_line_items", [])
+            for item in return_line_items:
+                name = item.get("name")
+                if not name:
+                    continue
+                products.append({
+                    "date": txn_date.isoformat() if txn_date else None,
+                    "product_name": name,
+                    "variation_name": item.get("variation_name"),
+                    "quantity": int(item.get("quantity", "1")),
+                    "amount": item.get("gross_return_money", {}).get("amount", 0),
+                    "currency": cur or "GBP",
+                    "location_name": loc_name_map.get(str(loc_id), "Unknown"),
+                })
+
+    # Convert amounts to GBP if needed
+    rates, _ = _fx.get_rates_to_gbp(db, current_user.organization_id, all_cur or {"GBP"})
+    for p in products:
+        rate = rates.get(p["currency"], 1.0)
+        p["amount_gbp"] = round(p["amount"] * rate)
+
+    # Sort by date descending
+    products.sort(key=lambda x: x["date"] or "", reverse=True)
+
+    return products
 
 
 # ─────────────────────────────────────────────────

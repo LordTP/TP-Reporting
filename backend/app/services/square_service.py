@@ -252,6 +252,142 @@ class SquareService:
             response.raise_for_status()
             return response.json()
 
+    async def search_orders_updated_since(
+        self,
+        access_token: str,
+        location_ids: List[str],
+        updated_since: datetime,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Search orders that were updated after a given timestamp.
+        Catches refunds, status changes, and modifications on historical orders.
+
+        Args:
+            access_token: Square access token
+            location_ids: List of location IDs
+            updated_since: Only return orders updated after this time
+            cursor: Pagination cursor
+
+        Returns:
+            Orders response with orders and cursor
+        """
+        if updated_since.tzinfo is None:
+            start_at = updated_since.strftime("%Y-%m-%dT%H:%M:%SZ")
+        else:
+            start_at = updated_since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        body = {
+            "location_ids": location_ids,
+            "query": {
+                "filter": {
+                    "date_time_filter": {
+                        "updated_at": {
+                            "start_at": start_at,
+                        }
+                    },
+                    "state_filter": {
+                        "states": ["COMPLETED"]
+                    }
+                },
+                "sort": {
+                    "sort_field": "UPDATED_AT",
+                    "sort_order": "DESC"
+                }
+            },
+            "limit": 100,
+        }
+
+        if cursor:
+            body["cursor"] = cursor
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.base_url}/v2/orders/search",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Square-Version": self.api_version,
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def list_refunds(
+        self,
+        access_token: str,
+        begin_time: datetime,
+        end_time: Optional[datetime] = None,
+        location_id: Optional[str] = None,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        List payment refunds (including PENDING ones).
+        Uses the Refunds API which surfaces refunds before they appear on orders.
+
+        Args:
+            access_token: Square access token
+            begin_time: Only return refunds created after this time
+            end_time: Only return refunds created before this time
+            location_id: Optional location filter
+            cursor: Pagination cursor
+
+        Returns:
+            Refunds response with refunds and cursor
+        """
+        params: Dict[str, Any] = {
+            "begin_time": begin_time.isoformat() if begin_time.tzinfo else begin_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "sort_order": "DESC",
+            "limit": 100,
+        }
+
+        if end_time:
+            params["end_time"] = end_time.isoformat() if end_time.tzinfo else end_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if location_id:
+            params["location_id"] = location_id
+        if cursor:
+            params["cursor"] = cursor
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{self.base_url}/v2/refunds",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Square-Version": self.api_version,
+                },
+                params=params,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def get_order(
+        self,
+        access_token: str,
+        order_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Get a single order by ID.
+
+        Args:
+            access_token: Square access token
+            order_id: Square order ID
+
+        Returns:
+            Order object
+        """
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{self.base_url}/v2/orders/{order_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Square-Version": self.api_version,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("order", {})
+
     async def list_catalog(
         self,
         access_token: str,

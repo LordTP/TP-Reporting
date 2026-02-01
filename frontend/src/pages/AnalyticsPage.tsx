@@ -440,9 +440,9 @@ export default function AnalyticsPage() {
     <div className="min-h-screen bg-background">
       <AppNav />
 
-      <main className="max-w-[1800px] mx-auto px-6 lg:px-8 py-8">
+      <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Analytics</h2>
             <p className="text-muted-foreground mt-1">Performance insights across all locations</p>
@@ -461,7 +461,7 @@ export default function AnalyticsPage() {
           </div>
 
           <Select value={datePreset} onValueChange={setDatePreset}>
-            <SelectTrigger className="w-[160px] h-9 text-sm">
+            <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
               <SelectValue placeholder="Date range" />
             </SelectTrigger>
             <SelectContent>
@@ -506,7 +506,7 @@ export default function AnalyticsPage() {
                 setSelectedClient(value)
                 setSelectedLocation('all')
               }}>
-                <SelectTrigger className="w-[180px] h-9 text-sm">
+                <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
                   <SelectValue placeholder="All clients" />
                 </SelectTrigger>
                 <SelectContent>
@@ -521,7 +521,7 @@ export default function AnalyticsPage() {
 
               {!clientHasKeywords && (
                 <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                  <SelectTrigger className="w-[200px] h-9 text-sm">
+                  <SelectTrigger className="w-full sm:w-[200px] h-9 text-sm">
                     <SelectValue placeholder="All locations" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1061,10 +1061,15 @@ export default function AnalyticsPage() {
                                     {child.total_transactions.toLocaleString()}
                                   </td>
                                   <td className="px-4 py-2 text-sm text-right text-muted-foreground">
-                                    {formatCurrency(child.average_transaction, child.currency)}
+                                    {formatCurrency(child.average_transaction, 'GBP')}
                                   </td>
                                   <td className="px-4 py-2 text-sm text-right text-muted-foreground">
-                                    {formatCurrency(child.total_sales, child.currency)}
+                                    {formatCurrency(child.converted_total_sales || child.total_sales, 'GBP')}
+                                    {child.currency !== 'GBP' && (
+                                      <div className="text-[10px] text-muted-foreground/60">
+                                        {formatCurrency(child.total_sales, child.currency)} → GBP
+                                      </div>
+                                    )}
                                   </td>
                                 </tr>
                               ))}

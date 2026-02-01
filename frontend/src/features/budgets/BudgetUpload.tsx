@@ -1,12 +1,12 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { Upload, Download, FileText, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Upload, Download, FileText, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { usePermissionStore } from '@/store/permissionStore'
 import BudgetOverview from './components/BudgetOverview'
@@ -39,15 +39,43 @@ interface BudgetRecord {
   updated_at: string
 }
 
-interface ParsedCSV {
+interface CSVValidation {
   headers: string[]
   rows: string[][]
   dateRange: string
+  matchedLocations: string[]
+  unmatchedLocations: string[]
+  invalidDateRows: number[]
+  invalidAmountCells: Array<{ row: number; col: number }>
+  duplicateDates: string[]
+  totalBudgetEntries: number
+  hasErrors: boolean
 }
 
-function parseCSVLocally(text: string): ParsedCSV {
+function isValidDate(str: string): boolean {
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const d = new Date(str + 'T00:00:00')
+    return !isNaN(d.getTime())
+  }
+  // DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+    const [day, month, year] = str.split('/')
+    const d = new Date(`${year}-${month}-${day}T00:00:00`)
+    return !isNaN(d.getTime())
+  }
+  return false
+}
+
+function validateCSV(text: string, knownLocations: LocationInfo[]): CSVValidation {
   const lines = text.trim().split(/\r?\n/)
-  if (lines.length < 2) return { headers: [], rows: [], dateRange: '' }
+  const empty: CSVValidation = {
+    headers: [], rows: [], dateRange: '',
+    matchedLocations: [], unmatchedLocations: [],
+    invalidDateRows: [], invalidAmountCells: [],
+    duplicateDates: [], totalBudgetEntries: 0, hasErrors: false,
+  }
+  if (lines.length < 2) return { ...empty, hasErrors: true }
 
   const headers = lines[0].split(',').map(h => h.trim())
   const rows: string[][] = []
@@ -61,16 +89,59 @@ function parseCSVLocally(text: string): ParsedCSV {
     }
   }
 
+  // Location matching (skip first column = "date")
+  const locationNameLower = new Map(knownLocations.map(l => [l.name.trim().toLowerCase(), l.name]))
+  const matchedLocations: string[] = []
+  const unmatchedLocations: string[] = []
+  for (let i = 1; i < headers.length; i++) {
+    const match = locationNameLower.get(headers[i].trim().toLowerCase())
+    if (match) matchedLocations.push(match)
+    else unmatchedLocations.push(headers[i])
+  }
+
+  // Date validation
+  const invalidDateRows: number[] = []
+  const dateCounts = new Map<string, number>()
+  for (let i = 0; i < rows.length; i++) {
+    const dateStr = rows[i][0]
+    if (!isValidDate(dateStr)) invalidDateRows.push(i)
+    dateCounts.set(dateStr, (dateCounts.get(dateStr) || 0) + 1)
+  }
+  const duplicateDates = [...dateCounts.entries()].filter(([, c]) => c > 1).map(([d]) => d)
+
+  // Amount validation
+  const invalidAmountCells: Array<{ row: number; col: number }> = []
+  let totalBudgetEntries = 0
+  for (let ri = 0; ri < rows.length; ri++) {
+    for (let ci = 1; ci < rows[ri].length; ci++) {
+      const cell = rows[ri][ci]
+      if (!cell || cell === '') continue // empty is fine
+      const num = parseFloat(cell.replace(',', ''))
+      if (isNaN(num) || num < 0) {
+        invalidAmountCells.push({ row: ri, col: ci })
+      } else {
+        totalBudgetEntries++
+      }
+    }
+  }
+
   const dateRange = dates.length > 0
     ? `${dates[0]} to ${dates[dates.length - 1]} (${dates.length} days)`
     : ''
 
-  return { headers, rows, dateRange }
+  const hasErrors = invalidDateRows.length > 0 || invalidAmountCells.length > 0 || rows.length === 0
+
+  return {
+    headers, rows, dateRange,
+    matchedLocations, unmatchedLocations,
+    invalidDateRows, invalidAmountCells,
+    duplicateDates, totalBudgetEntries, hasErrors,
+  }
 }
 
 export default function BudgetUpload() {
   const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<ParsedCSV | null>(null)
+  const [preview, setPreview] = useState<CSVValidation | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [templateLocationId, setTemplateLocationId] = useState<string>('')
@@ -107,6 +178,17 @@ export default function BudgetUpload() {
     enabled: hasToken,
   })
 
+  // Build lookup of existing budget data: { "YYYY-MM-DD": { locationId: amountInPounds } }
+  const budgetLookup = useMemo(() => {
+    const lookup = new Map<string, Map<string, number>>()
+    const budgets = existingBudgets?.budgets || []
+    for (const b of budgets) {
+      if (!lookup.has(b.date)) lookup.set(b.date, new Map())
+      lookup.get(b.date)!.set(b.location_id, b.budget_amount / 100) // pence to pounds
+    }
+    return lookup
+  }, [existingBudgets])
+
   // Upload mutation
   const uploadMutation = useMutation({
     mutationFn: (csvFile: File) =>
@@ -123,10 +205,10 @@ export default function BudgetUpload() {
     const reader = new FileReader()
     reader.onload = (e) => {
       const text = e.target?.result as string
-      setPreview(parseCSVLocally(text))
+      setPreview(validateCSV(text, locations || []))
     }
     reader.readAsText(selectedFile)
-  }, [uploadMutation])
+  }, [uploadMutation, locations])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -141,25 +223,40 @@ export default function BudgetUpload() {
 
   const handleDownloadTemplate = () => {
     const locs = locations || []
-    const selectedLoc = locs.find(l => l.id === templateLocationId)
-    if (!selectedLoc) return
+    const isAll = templateLocationId === '__all__'
 
-    const header = ['date', selectedLoc.name].join(',')
+    // Determine which locations to include
+    const templateLocs = isAll
+      ? [...locs].sort((a, b) => a.name.localeCompare(b.name))
+      : [locs.find(l => l.id === templateLocationId)].filter(Boolean) as LocationInfo[]
+
+    if (templateLocs.length === 0) return
+
+    const header = ['date', ...templateLocs.map(l => l.name)].join(',')
     const rows: string[] = []
     const today = new Date()
-    // Generate 365 days from today
+
     for (let i = 0; i < 365; i++) {
       const d = new Date(today)
       d.setDate(d.getDate() + i)
       const dateStr = d.toISOString().split('T')[0]
-      rows.push(`${dateStr},`)
+      const dayData = budgetLookup.get(dateStr)
+      const amounts = templateLocs.map(loc => {
+        const val = dayData?.get(loc.id)
+        return val !== undefined ? val.toString() : ''
+      })
+      rows.push(`${dateStr},${amounts.join(',')}`)
     }
+
     const csv = [header, ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `budget_template_${selectedLoc.name.replace(/\s+/g, '_')}.csv`
+    const fileName = isAll
+      ? 'budget_template_All_Locations.csv'
+      : `budget_template_${templateLocs[0].name.replace(/\s+/g, '_')}.csv`
+    a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
     setTemplateDialogOpen(false)
@@ -167,6 +264,27 @@ export default function BudgetUpload() {
   }
 
   const result = uploadMutation.data
+
+  // Build sets for quick cell-level error lookup in preview table
+  const invalidAmountSet = useMemo(() => {
+    if (!preview) return new Set<string>()
+    return new Set(preview.invalidAmountCells.map(c => `${c.row}-${c.col}`))
+  }, [preview])
+
+  const invalidDateSet = useMemo(() => {
+    if (!preview) return new Set<number>()
+    return new Set(preview.invalidDateRows)
+  }, [preview])
+
+  const unmatchedColSet = useMemo(() => {
+    if (!preview) return new Set<number>()
+    const set = new Set<number>()
+    const unmatchedLower = new Set(preview.unmatchedLocations.map(u => u.trim().toLowerCase()))
+    preview.headers.forEach((h, i) => {
+      if (i > 0 && unmatchedLower.has(h.trim().toLowerCase())) set.add(i)
+    })
+    return set
+  }, [preview])
 
   return (
     <div className="space-y-6">
@@ -186,7 +304,7 @@ export default function BudgetUpload() {
             <DialogHeader>
               <DialogTitle>Download Budget Template</DialogTitle>
               <DialogDescription>
-                Select a location to generate a CSV template with 365 days of dates starting from today.
+                Select a location or download for all locations. Existing budget data will be pre-filled.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
@@ -195,6 +313,7 @@ export default function BudgetUpload() {
                   <SelectValue placeholder="Select a location" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__all__">All Locations</SelectItem>
                   {(locations || []).map((loc) => (
                     <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                   ))}
@@ -202,10 +321,16 @@ export default function BudgetUpload() {
               </Select>
               {templateLocationId && (
                 <p className="text-sm text-muted-foreground mt-3">
-                  Template will contain dates from{' '}
-                  <span className="font-medium text-foreground">{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  {' '}to{' '}
-                  <span className="font-medium text-foreground">{(() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) })()}</span>
+                  {templateLocationId === '__all__'
+                    ? `Template will include ${(locations || []).length} locations with 365 days of dates.`
+                    : <>
+                        Template will contain dates from{' '}
+                        <span className="font-medium text-foreground">{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        {' '}to{' '}
+                        <span className="font-medium text-foreground">{(() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) })()}</span>
+                      </>
+                  }
+                  {' '}Existing budgets will be pre-filled.
                 </p>
               )}
             </div>
@@ -335,22 +460,78 @@ export default function BudgetUpload() {
               </div>
             </div>
 
-            {/* Preview — full width below the split when a file is selected */}
+            {/* Validation Preview — full width below the split when a file is selected */}
             {preview && preview.headers.length > 0 && (
               <div className="mt-6 pt-6 border-t border-border space-y-3">
+                {/* Validation Summary */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">Validation</p>
+                  <div className="flex flex-wrap gap-2">
+                    {preview.matchedLocations.length > 0 && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200 text-green-700 text-xs">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {preview.matchedLocations.length} location{preview.matchedLocations.length !== 1 ? 's' : ''} matched
+                      </div>
+                    )}
+                    {preview.unmatchedLocations.length > 0 && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-700 text-xs">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {preview.unmatchedLocations.length} not recognised: {preview.unmatchedLocations.join(', ')}
+                      </div>
+                    )}
+                    {preview.invalidDateRows.length > 0 && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs">
+                        <XCircle className="h-3.5 w-3.5" />
+                        {preview.invalidDateRows.length} invalid date{preview.invalidDateRows.length !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {preview.invalidAmountCells.length > 0 && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs">
+                        <XCircle className="h-3.5 w-3.5" />
+                        {preview.invalidAmountCells.length} invalid amount{preview.invalidAmountCells.length !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {preview.duplicateDates.length > 0 && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-700 text-xs">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Duplicate dates: {preview.duplicateDates.join(', ')}
+                      </div>
+                    )}
+                    {!preview.hasErrors && preview.unmatchedLocations.length === 0 && preview.duplicateDates.length === 0 && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200 text-green-700 text-xs">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        All data valid &mdash; {preview.totalBudgetEntries} budget entries ready
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Preview info bar */}
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-foreground">Preview</p>
                   <p className="text-xs text-muted-foreground">
-                    {preview.headers.length - 1} locations &middot; {preview.dateRange} &middot; {preview.rows.length} rows
+                    {preview.matchedLocations.length} of {preview.headers.length - 1} locations &middot; {preview.dateRange} &middot; {preview.rows.length} rows
                   </p>
                 </div>
+
+                {/* Data table with validation highlights */}
                 <div className="overflow-x-auto max-h-[300px] overflow-y-auto border border-border rounded-lg">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm">
                       <tr>
                         {preview.headers.map((h, i) => (
-                          <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                            {h}
+                          <th
+                            key={i}
+                            className={`px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${
+                              i > 0 && unmatchedColSet.has(i)
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                                : 'text-muted-foreground'
+                            }`}
+                          >
+                            <span className="flex items-center gap-1">
+                              {i > 0 && unmatchedColSet.has(i) && <AlertTriangle className="h-3 w-3" />}
+                              {h}
+                            </span>
                           </th>
                         ))}
                       </tr>
@@ -358,11 +539,27 @@ export default function BudgetUpload() {
                     <tbody className="divide-y divide-border">
                       {preview.rows.slice(0, 10).map((row, ri) => (
                         <tr key={ri} className="hover:bg-muted/30">
-                          {row.map((cell, ci) => (
-                            <td key={ci} className={`px-3 py-1.5 whitespace-nowrap ${ci === 0 ? 'font-medium' : 'text-right'}`}>
-                              {ci > 0 && cell ? `${parseFloat(cell.replace(',', '')).toLocaleString()}` : cell}
-                            </td>
-                          ))}
+                          {row.map((cell, ci) => {
+                            const isDateError = ci === 0 && invalidDateSet.has(ri)
+                            const isAmountError = ci > 0 && invalidAmountSet.has(`${ri}-${ci}`)
+                            const isUnmatchedCol = ci > 0 && unmatchedColSet.has(ci)
+                            return (
+                              <td
+                                key={ci}
+                                className={`px-3 py-1.5 whitespace-nowrap ${ci === 0 ? 'font-medium' : 'text-right'} ${
+                                  isDateError || isAmountError
+                                    ? 'text-red-600 bg-red-50 dark:bg-red-950 dark:text-red-400'
+                                    : isUnmatchedCol
+                                    ? 'text-amber-600 bg-amber-50/50 dark:bg-amber-950/50 dark:text-amber-400'
+                                    : ''
+                                }`}
+                              >
+                                {ci > 0 && cell && !isAmountError
+                                  ? parseFloat(cell.replace(',', '')).toLocaleString()
+                                  : cell}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -373,12 +570,23 @@ export default function BudgetUpload() {
                     </p>
                   )}
                 </div>
+
+                {/* Upload button with validation state */}
                 <Button
                   onClick={handleUpload}
-                  disabled={uploadMutation.isPending}
+                  disabled={uploadMutation.isPending || preview.hasErrors || preview.matchedLocations.length === 0}
                   className="w-full"
                 >
-                  {uploadMutation.isPending ? 'Uploading...' : `Upload ${preview.rows.length} days of budgets`}
+                  {uploadMutation.isPending
+                    ? 'Uploading...'
+                    : preview.hasErrors
+                    ? 'Fix errors before uploading'
+                    : preview.matchedLocations.length === 0
+                    ? 'No matching locations found'
+                    : preview.unmatchedLocations.length > 0
+                    ? `Upload ${preview.totalBudgetEntries} entries (${preview.unmatchedLocations.length} column${preview.unmatchedLocations.length !== 1 ? 's' : ''} will be skipped)`
+                    : `Upload ${preview.totalBudgetEntries} budget entries`
+                  }
                 </Button>
               </div>
             )}

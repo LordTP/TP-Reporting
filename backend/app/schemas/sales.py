@@ -67,13 +67,17 @@ class SalesTransactionList(BaseModel):
 
 class SalesAggregation(BaseModel):
     """Aggregated sales data"""
-    total_sales: int  # In smallest currency unit
+    total_sales: int  # Gross sales in smallest currency unit
+    total_refunds: int = 0  # Refund amount (positive number representing money returned)
+    net_sales: int = 0  # total_sales - total_refunds
     total_transactions: int
     average_transaction: int
     currency: str
     start_date: datetime
     end_date: datetime
     by_currency: Optional[List[Dict[str, Any]]] = None
+    refunds_by_currency: Optional[List[Dict[str, Any]]] = None
+    net_by_currency: Optional[List[Dict[str, Any]]] = None
 
 
 class SalesFilters(BaseModel):

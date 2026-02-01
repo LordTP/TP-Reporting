@@ -31,7 +31,7 @@ export default function ReportLayout({ title, description, children, filters, on
     <div className="min-h-screen bg-background">
       <AppNav />
 
-      <main className="max-w-[1800px] mx-auto px-6 lg:px-8 py-8">
+      <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Breadcrumb + Header */}
         <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
           <Link to="/reports" className="hover:text-primary flex items-center gap-1">
@@ -42,7 +42,7 @@ export default function ReportLayout({ title, description, children, filters, on
           <span className="text-foreground font-medium">{title}</span>
         </div>
 
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-foreground">{title}</h2>
             {description && <p className="text-muted-foreground mt-1">{description}</p>}
@@ -63,7 +63,7 @@ export default function ReportLayout({ title, description, children, filters, on
           </div>
 
           <Select value={datePreset} onValueChange={setDatePreset}>
-            <SelectTrigger className="w-[160px] h-9 text-sm">
+            <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
               <SelectValue placeholder="Date range" />
             </SelectTrigger>
             <SelectContent>
@@ -108,7 +108,7 @@ export default function ReportLayout({ title, description, children, filters, on
                 setSelectedClient(value)
                 setSelectedLocation('all')
               }}>
-                <SelectTrigger className="w-[180px] h-9 text-sm">
+                <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
                   <SelectValue placeholder="All clients" />
                 </SelectTrigger>
                 <SelectContent>
@@ -132,7 +132,7 @@ export default function ReportLayout({ title, description, children, filters, on
                 }
                 return (
                   <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                    <SelectTrigger className="w-[200px] h-9 text-sm">
+                    <SelectTrigger className="w-full sm:w-[200px] h-9 text-sm">
                       <SelectValue placeholder="All locations" />
                     </SelectTrigger>
                     <SelectContent>

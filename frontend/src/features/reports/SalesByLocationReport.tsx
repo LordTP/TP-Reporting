@@ -304,7 +304,7 @@ export default function SalesByLocationReport() {
                           </td>
                           <td className="px-4 py-2.5 text-sm text-right text-muted-foreground">{child.total_transactions.toLocaleString()}</td>
                           <td className="px-4 py-2.5 text-sm text-right text-muted-foreground/70">
-                            {formatCurrency(child.average_transaction, child.currency)}
+                            {formatCurrency(child.average_transaction, 'GBP')}
                           </td>
                           <td className="px-4 py-2.5 text-sm text-right text-muted-foreground">
                             {formatCurrency(child.total_sales, child.currency)}

@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-import uuid
 import asyncio
 
 from app.celery_app import celery_app
@@ -45,9 +44,6 @@ def parse_and_store_order(db: Session, order: Dict[str, Any], locations: List[Lo
         existing = db.query(SalesTransaction).filter(
             SalesTransaction.square_transaction_id == order_id
         ).first()
-
-        if existing:
-            return (False, True)  # Not stored, was duplicate
 
         # Find the matching location
         location_id = order.get("location_id")
@@ -101,11 +97,33 @@ def parse_and_store_order(db: Session, order: Dict[str, Any], locations: List[Lo
             }
             line_items_data.append(item_data)
 
-            # Extract category if available (would need catalog API for full category names)
-            if item.get("catalog_object_id"):
-                # For now, we'll store the catalog_object_id
-                # In Phase 9, we can enhance this with full catalog data
-                pass
+        new_status = order.get("state", "UNKNOWN")
+
+        if existing:
+            # Update existing record if status changed or refund data appeared
+            old_raw = existing.raw_data or {}
+            old_refunds = old_raw.get("refunds", [])
+            new_refunds = order.get("refunds", [])
+            status_changed = existing.payment_status != new_status
+            # Compare both count and individual refund statuses (catches PENDING → COMPLETED)
+            old_refund_statuses = sorted([r.get("status") for r in old_refunds])
+            new_refund_statuses = sorted([r.get("status") for r in new_refunds])
+            refunds_changed = (len(new_refunds) != len(old_refunds)) or (old_refund_statuses != new_refund_statuses)
+
+            if status_changed or refunds_changed:
+                existing.payment_status = new_status
+                existing.amount_money_amount = net_amounts.get("total_money", {}).get("amount", 0)
+                existing.total_money_amount = total_money.get("amount", 0)
+                existing.total_discount_amount = order.get("total_discount_money", {}).get("amount", 0)
+                existing.total_tax_amount = order.get("total_tax_money", {}).get("amount", 0)
+                existing.total_tip_amount = order.get("total_tip_money", {}).get("amount", 0)
+                existing.line_items = line_items_data
+                existing.raw_data = order
+                db.commit()
+                print(f"Updated order {order_id}: status={new_status}, refunds={len(new_refunds)}")
+                return (True, True)  # Updated existing record
+
+            return (False, True)  # No changes, skip
 
         # Create transaction record
         transaction = SalesTransaction(
@@ -126,7 +144,7 @@ def parse_and_store_order(db: Session, order: Dict[str, Any], locations: List[Lo
 
             # Payment details
             tender_type=tender_type,
-            payment_status=order.get("state", "UNKNOWN"),
+            payment_status=new_status,
             card_brand=card_brand,
             last_4=last_4,
 
@@ -158,99 +176,8 @@ def parse_and_store_order(db: Session, order: Dict[str, Any], locations: List[Lo
         return (False, False)  # Not stored, not duplicate (error)
 
 
-def parse_and_store_payment(db: Session, payment: Dict[str, Any], location: Location) -> tuple[bool, bool]:
-    """
-    Parse Square payment data and store in sales_transactions table
-
-    Args:
-        db: Database session
-        payment: Square payment object
-        location: Location object
-
-    Returns:
-        Tuple of (stored: bool, was_duplicate: bool)
-    """
-    try:
-        square_transaction_id = payment.get("id")
-
-        # Check if already exists (duplicate check)
-        existing = db.query(SalesTransaction).filter(
-            SalesTransaction.square_transaction_id == square_transaction_id
-        ).first()
-
-        if existing:
-            return (False, True)  # Not stored, was duplicate
-
-        # Extract payment data
-        amount_money = payment.get("amount_money", {})
-        total_money = payment.get("total_money", {})
-
-        # Parse datetime with timezone
-        created_at_str = payment.get("created_at", "")
-        transaction_date = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
-
-        # Get tender information (first tender for simplicity)
-        tenders = payment.get("tender", [])
-        tender_type = None
-        card_brand = None
-        last_4 = None
-
-        if tenders:
-            first_tender = tenders[0]
-            tender_type = first_tender.get("type")
-
-            card_details = first_tender.get("card_details", {})
-            if card_details:
-                card_brand = card_details.get("card", {}).get("card_brand")
-                last_4 = card_details.get("card", {}).get("last_4")
-
-        # Create transaction record
-        transaction = SalesTransaction(
-            location_id=location.id,
-            square_transaction_id=square_transaction_id,
-            transaction_date=transaction_date,
-
-            # Money amounts
-            amount_money_amount=amount_money.get("amount", 0),
-            amount_money_currency=amount_money.get("currency", location.currency),
-            total_money_amount=total_money.get("amount", 0),
-            total_money_currency=total_money.get("currency", location.currency),
-
-            # Additional amounts
-            total_discount_amount=payment.get("total_discount_money", {}).get("amount", 0),
-            total_tax_amount=payment.get("total_tax_money", {}).get("amount", 0),
-            total_tip_amount=payment.get("total_tip_money", {}).get("amount", 0),
-
-            # Payment details
-            tender_type=tender_type,
-            payment_status=payment.get("status", "UNKNOWN"),
-            card_brand=card_brand,
-            last_4=last_4,
-
-            # Customer
-            customer_id=payment.get("customer_id"),
-
-            # Raw data for future reference
-            raw_data=payment,
-        )
-
-        db.add(transaction)
-        db.commit()
-
-        return (True, False)  # Stored, not duplicate
-
-    except IntegrityError:
-        db.rollback()
-        return (False, True)  # Duplicate transaction ID
-
-    except Exception as e:
-        db.rollback()
-        print(f"Error storing payment {payment.get('id')}: {str(e)}")
-        return (False, False)  # Not stored, not duplicate (error)
-
-
 @celery_app.task(bind=True, max_retries=3)
-def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]] = None):
+def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]] = None, import_id: Optional[str] = None):
     """
     Sync Square payments for specified locations
     This task runs periodically or can be triggered manually
@@ -258,6 +185,7 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
     Args:
         account_id: Square account UUID
         location_ids: Optional list of location UUIDs to sync. If None, syncs all active locations
+        import_id: Optional DataImport UUID to update with results
     """
     db = next(get_db())
 
@@ -286,52 +214,136 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
             return {"status": "error", "message": "No active locations found"}
 
         # Determine time range for sync
-        # Sync last 7 days to catch any delayed transactions
         end_time = datetime.utcnow()
-        start_time = account.last_sync_at if account.last_sync_at else (end_time - timedelta(days=7))
+        # For new orders: look back from last sync (or 7 days on first run)
+        orders_start = account.last_sync_at if account.last_sync_at else (end_time - timedelta(days=7))
+        # For updated orders (refunds etc): always look back at least 24h as a safety net
+        # in case a sync cycle was missed. parse_and_store_order skips unchanged records efficiently.
+        updates_since = min(
+            account.last_sync_at if account.last_sync_at else (end_time - timedelta(days=7)),
+            end_time - timedelta(hours=24)
+        )
 
         total_synced = 0
+        total_updated = 0
         access_token = square_service.get_decrypted_token(account)
+        square_location_ids = [loc.square_location_id for loc in locations]
 
-        for location in locations:
-            try:
-                # Fetch payments from Square API
-                cursor = None
-                location_synced = 0
+        # --- Pass 1: Fetch NEW completed orders (closed since last sync) ---
+        try:
+            cursor = None
 
-                while True:
-                    payments_response = asyncio.run(square_service.list_payments(
-                        access_token=access_token,
-                        location_id=location.square_location_id,
-                        begin_time=start_time,
-                        end_time=end_time,
-                        cursor=cursor
-                    ))
+            while True:
+                orders_response = asyncio.run(square_service.search_orders(
+                    access_token=access_token,
+                    location_ids=square_location_ids,
+                    begin_time=orders_start,
+                    end_time=end_time,
+                    cursor=cursor,
+                ))
 
-                    payments = payments_response.get("payments", [])
+                orders = orders_response.get("orders", [])
 
-                    for payment in payments:
-                        stored, _ = parse_and_store_payment(db, payment, location)
-                        if stored:
-                            location_synced += 1
+                for order in orders:
+                    stored, was_dup = parse_and_store_order(db, order, locations)
+                    if stored and not was_dup:
+                        total_synced += 1
 
-                    cursor = payments_response.get("cursor")
-                    if not cursor:
-                        break
+                cursor = orders_response.get("cursor")
+                if not cursor:
+                    break
 
-                total_synced += location_synced
+        except Exception as e:
+            print(f"Error syncing new orders: {str(e)}")
 
-            except Exception as e:
-                # Log error but continue with other locations
-                print(f"Error syncing location {location.id}: {str(e)}")
-                continue
+        # --- Pass 2: Fetch orders UPDATED since last sync (catches refunds on old orders) ---
+        try:
+            cursor = None
+
+            while True:
+                orders_response = asyncio.run(square_service.search_orders_updated_since(
+                    access_token=access_token,
+                    location_ids=square_location_ids,
+                    updated_since=updates_since,
+                    cursor=cursor,
+                ))
+
+                orders = orders_response.get("orders", [])
+
+                for order in orders:
+                    stored, was_dup = parse_and_store_order(db, order, locations)
+                    if stored and was_dup:
+                        total_updated += 1
+                    elif stored and not was_dup:
+                        total_synced += 1
+
+                cursor = orders_response.get("cursor")
+                if not cursor:
+                    break
+
+            if total_updated > 0:
+                print(f"Updated {total_updated} existing orders (refunds/status changes)")
+
+        except Exception as e:
+            print(f"Warning: Updated-orders pass failed: {str(e)}")
+
+        # --- Pass 3: Check Refunds API for pending/recent refunds ---
+        # The Refunds API surfaces refunds immediately (including PENDING),
+        # even before they appear on the order object. For each refund found,
+        # re-fetch the full order to get the latest state.
+        # 24h window is sufficient since this runs every 15 minutes.
+        refunds_since = end_time - timedelta(hours=24)
+        try:
+            seen_order_ids = set()
+            cursor = None
+
+            while True:
+                refunds_response = asyncio.run(square_service.list_refunds(
+                    access_token=access_token,
+                    begin_time=refunds_since,
+                    end_time=end_time,
+                    cursor=cursor,
+                ))
+
+                refunds = refunds_response.get("refunds", [])
+
+                for refund in refunds:
+                    order_id = refund.get("order_id")
+                    if not order_id or order_id in seen_order_ids:
+                        continue
+                    seen_order_ids.add(order_id)
+
+                    # Re-fetch the full order to get latest state
+                    try:
+                        order = asyncio.run(square_service.get_order(
+                            access_token=access_token,
+                            order_id=order_id,
+                        ))
+                        if order:
+                            stored, was_dup = parse_and_store_order(db, order, locations)
+                            if stored and was_dup:
+                                total_updated += 1
+                            elif stored and not was_dup:
+                                total_synced += 1
+                    except Exception as e:
+                        print(f"Warning: Failed to fetch order {order_id} for refund: {str(e)}")
+
+                cursor = refunds_response.get("cursor")
+                if not cursor:
+                    break
+
+            if seen_order_ids:
+                print(f"Checked {len(seen_order_ids)} orders with recent refunds")
+
+        except Exception as e:
+            print(f"Warning: Refunds pass failed: {str(e)}")
 
         # Update last sync time
         account.last_sync_at = end_time
         db.commit()
 
-        # Rebuild daily sales summaries for synced locations
-        if total_synced > 0:
+        # Rebuild daily sales summaries if anything changed
+        if total_synced > 0 or total_updated > 0:
             try:
                 from app.services.summary_service import rebuild_daily_summaries_for_locations
                 loc_ids = [str(loc.id) for loc in locations]
@@ -340,15 +352,41 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
             except Exception as e:
                 print(f"Warning: Failed to rebuild daily summaries: {str(e)}")
 
+        # Update DataImport record if one was created
+        if import_id:
+            try:
+                data_import = db.query(DataImport).filter(DataImport.id == import_id).first()
+                if data_import:
+                    data_import.status = ImportStatusEnum.COMPLETED
+                    data_import.imported_transactions = total_synced
+                    data_import.duplicate_transactions = total_updated
+                    data_import.total_transactions = total_synced + total_updated
+                    data_import.completed_at = datetime.utcnow()
+                    db.commit()
+            except Exception as e:
+                print(f"Warning: Failed to update DataImport record: {str(e)}")
+
         return {
             "status": "success",
             "account_id": account_id,
             "locations_synced": len(locations),
             "transactions_synced": total_synced,
+            "transactions_updated": total_updated,
             "sync_time": end_time.isoformat()
         }
 
     except Exception as e:
+        # Mark DataImport as failed
+        if import_id:
+            try:
+                data_import = db.query(DataImport).filter(DataImport.id == import_id).first()
+                if data_import:
+                    data_import.status = ImportStatusEnum.FAILED
+                    data_import.error_message = str(e)
+                    data_import.completed_at = datetime.utcnow()
+                    db.commit()
+            except Exception:
+                pass
         db.rollback()
         # Retry on failure
         raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
@@ -421,52 +459,47 @@ def import_historical_data(self, import_id: str, location_ids: Optional[List[str
         total_imported = 0
         total_duplicates = 0
 
-        # Process each location
-        for location in locations:
+        # Process in monthly chunks using Orders API (includes line items)
+        location_ids = [loc.square_location_id for loc in locations]
+        current_start = start_date
+
+        while current_start < end_date:
+            chunk_end = min(current_start + timedelta(days=30), end_date)
+
             try:
-                current_start = start_date
+                cursor = None
 
-                # Process in monthly chunks
-                while current_start < end_date:
-                    chunk_end = min(current_start + timedelta(days=30), end_date)
+                while True:
+                    orders_response = asyncio.run(square_service.search_orders(
+                        access_token=access_token,
+                        location_ids=location_ids,
+                        begin_time=current_start,
+                        end_time=chunk_end,
+                        cursor=cursor,
+                    ))
 
-                    cursor = None
-                    chunk_imported = 0
+                    orders = orders_response.get("orders", [])
 
-                    while True:
-                        payments_response = asyncio.run(square_service.list_payments(
-                            access_token=access_token,
-                            location_id=location.square_location_id,
-                            begin_time=current_start,
-                            end_time=chunk_end,
-                            cursor=cursor
-                        ))
+                    for order in orders:
+                        stored, is_duplicate = parse_and_store_order(db, order, locations)
+                        if stored:
+                            total_imported += 1
+                        if is_duplicate:
+                            total_duplicates += 1
 
-                        payments = payments_response.get("payments", [])
+                    # Update progress
+                    data_import.imported_transactions = total_imported
+                    data_import.duplicate_transactions = total_duplicates
+                    db.commit()
 
-                        for payment in payments:
-                            stored, is_duplicate = parse_and_store_payment(db, payment, location)
-                            if stored:
-                                chunk_imported += 1
-                            if is_duplicate:
-                                total_duplicates += 1
-
-                        # Update progress
-                        total_imported += chunk_imported
-                        data_import.imported_transactions = total_imported
-                        data_import.duplicate_transactions = total_duplicates
-                        db.commit()
-
-                        cursor = payments_response.get("cursor")
-                        if not cursor:
-                            break
-
-                    current_start = chunk_end
+                    cursor = orders_response.get("cursor")
+                    if not cursor:
+                        break
 
             except Exception as e:
-                # Log error but continue with other locations
-                print(f"Error importing data for location {location.id}: {str(e)}")
-                continue
+                print(f"Error importing orders for chunk {current_start} - {chunk_end}: {str(e)}")
+
+            current_start = chunk_end
 
         # Mark as completed
         data_import.status = ImportStatus.COMPLETED

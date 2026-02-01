@@ -139,8 +139,8 @@ def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) 
 
     # Step 5: Returns counts and amounts (merchandise returns, not just monetary refunds)
     # Uses raw_data->'returns' which captures all returns including exchanges.
-    # Square's total_money in return_amounts INCLUDES tax, so we subtract tax_money
-    # to get the ex-tax return value matching Square Dashboard's "Returns" line.
+    # Uses gross refund amount (total_money including tax) — shows what
+    # the customer actually got refunded.
     return_rows = db.query(
         SalesTransaction.location_id,
         func.date(SalesTransaction.transaction_date).label("tx_date"),
@@ -152,14 +152,21 @@ def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) 
 
     for row in return_rows:
         key = (str(row.location_id), row.tx_date)
-        if key in buckets:
-            buckets[key]["refund_count"] += 1
-            returns = (row.raw_data or {}).get("returns", [])
-            for ret in returns:
-                return_amounts = ret.get("return_amounts") or {}
-                total_money = (return_amounts.get("total_money") or {}).get("amount", 0)
-                tax_money = (return_amounts.get("tax_money") or {}).get("amount", 0)
-                buckets[key]["total_refund_amount"] += (total_money - tax_money)
+        # Create empty bucket for refund-only days (no COMPLETED orders that day)
+        if key not in buckets:
+            buckets[key] = {
+                "total_sales": 0, "total_gross": 0, "transaction_count": 0,
+                "total_items": 0, "total_tax": 0, "total_tips": 0,
+                "total_discounts": 0, "total_refund_amount": 0, "refund_count": 0,
+                "by_tender_type": {}, "by_hour": {}, "top_products": [],
+                "currency": (row.raw_data or {}).get("net_amounts", {}).get("total_money", {}).get("currency", "GBP"),
+            }
+        buckets[key]["refund_count"] += 1
+        returns = (row.raw_data or {}).get("returns", [])
+        for ret in returns:
+            return_amounts = ret.get("return_amounts") or {}
+            total_money = (return_amounts.get("total_money") or {}).get("amount", 0)
+            buckets[key]["total_refund_amount"] += total_money
 
     # Step 6: Delete old and insert new
     db.query(DailySalesSummary).filter(

@@ -77,7 +77,7 @@ export default function AppNav() {
                     <span className="font-medium text-foreground">{r.from_currency}</span>
                     <span className="mx-0.5">/</span>
                     <span className="font-medium text-foreground">{r.to_currency}</span>
-                    <span className="ml-1 text-primary font-semibold">{r.rate.toFixed(4)}</span>
+                    <span className="ml-1 text-primary font-semibold">{r.rate.toFixed(2)}</span>
                   </span>
                 ))}
               </div>

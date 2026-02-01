@@ -504,16 +504,30 @@ async def trigger_manual_sync(
             detail="No active locations to sync"
         )
 
-    # TODO: Trigger Celery task for async sync
-    # from app.tasks.sync_square_data import sync_square_payments
-    # task = sync_square_payments.delay(
-    #     str(account.id),
-    #     [str(loc.id) for loc in locations]
-    # )
+    # Create a DataImport record so it shows in Sync Status
+    data_import = DataImport(
+        square_account_id=account.id,
+        import_type=ImportType.MANUAL_SYNC,
+        start_date=datetime.utcnow().date(),
+        end_date=datetime.utcnow().date(),
+        status=ImportStatusEnum.IN_PROGRESS,
+        initiated_by=current_user.id,
+        started_at=datetime.utcnow(),
+    )
+    db.add(data_import)
+    db.commit()
+    db.refresh(data_import)
+
+    from app.tasks.sync_square_data import sync_square_payments
+    task = sync_square_payments.delay(
+        str(account.id),
+        [str(loc.id) for loc in locations],
+        str(data_import.id),
+    )
 
     return SyncResponse(
-        message="Sync started successfully",
-        task_id=None,  # Will be task.id when Celery is implemented
+        message=f"Sync started for {len(locations)} locations",
+        task_id=task.id,
         locations_synced=len(locations)
     )
 

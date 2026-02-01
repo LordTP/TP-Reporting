@@ -240,8 +240,8 @@ export default function SalesPage() {
     <div className="min-h-screen bg-background">
       <AppNav />
 
-      <main className="max-w-[1800px] mx-auto px-6 lg:px-8 py-8">
-        <div className="flex justify-between items-center mb-8">
+      <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-foreground">Sales Transactions</h2>
             <p className="text-muted-foreground mt-1">
@@ -255,16 +255,16 @@ export default function SalesPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-4 mb-8 p-6 bg-card/80 backdrop-blur-sm rounded-xl border border-border/50 shadow-lg">
+        <div className="flex flex-wrap items-center gap-4 mb-8 p-4 sm:p-6 bg-card/80 backdrop-blur-sm rounded-xl border border-border/50 shadow-lg">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Filters:</span>
           </div>
-          <div className="flex-1 flex gap-4">
+          <div className="flex-1 flex flex-wrap gap-3 sm:gap-4">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground">Date Range</label>
               <Select value={datePreset} onValueChange={setDatePreset}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Select date range" />
                 </SelectTrigger>
                 <SelectContent>
@@ -289,7 +289,7 @@ export default function SalesPage() {
                     // Reset location filter when client changes
                     setSelectedLocation('all')
                   }}>
-                    <SelectTrigger className="w-[200px]">
+                    <SelectTrigger className="w-full sm:w-[200px]">
                       <SelectValue placeholder="All Clients" />
                     </SelectTrigger>
                     <SelectContent>
@@ -311,7 +311,7 @@ export default function SalesPage() {
                       value={selectedLocation}
                       onValueChange={setSelectedLocation}
                     >
-                      <SelectTrigger className="w-[200px]">
+                      <SelectTrigger className="w-full sm:w-[200px]">
                         <SelectValue placeholder="All Locations" />
                       </SelectTrigger>
                       <SelectContent>
@@ -336,7 +336,7 @@ export default function SalesPage() {
         <div className="grid gap-4 md:grid-cols-3 mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+              <CardTitle className="text-sm font-medium">Gross Sales</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -357,30 +357,28 @@ export default function SalesPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Average Sale</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Refunds</CardTitle>
+              <Receipt className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               {aggregationLoading ? (
                 <div className="text-2xl font-bold">Loading...</div>
-              ) : aggregation && aggregation.total_transactions > 0 ? (
+              ) : aggregation && aggregation.total_refunds > 0 ? (
                 <>
-                  <div className="text-2xl font-bold">
-                    {formatCurrency(aggregation.average_transaction, aggregation.currency)}
+                  <div className="text-2xl font-bold text-red-600">
+                    -{formatCurrency(aggregation.total_refunds, aggregation.currency)}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Per transaction
-                  </p>
+                  <CurrencyBreakdownAnnotation breakdown={aggregation.refunds_by_currency} />
                 </>
               ) : (
-                <div className="text-2xl font-bold">£0.00</div>
+                <div className="text-2xl font-bold text-muted-foreground">£0.00</div>
               )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
+              <CardTitle className="text-sm font-medium">Transactions</CardTitle>
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -388,7 +386,7 @@ export default function SalesPage() {
                 {aggregation ? aggregation.total_transactions.toLocaleString() : totalCount.toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground">
-                Completed transactions
+                Avg {aggregation && aggregation.total_transactions > 0 ? formatCurrency(aggregation.average_transaction, aggregation.currency) : '£0.00'}
               </p>
             </CardContent>
           </Card>
@@ -496,7 +494,7 @@ export default function SalesPage() {
 
       {/* Transaction Detail Modal */}
       <Dialog open={!!selectedTxnId} onOpenChange={(open) => { if (!open) setSelectedTxnId(null) }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-2rem)] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           {detailLoading ? (
             <>
               <DialogHeader>
@@ -571,16 +569,23 @@ export default function SalesPage() {
                             <span className="text-sm text-muted-foreground">Subtotal</span>
                             <span className="text-sm font-medium">{formatCurrency(subtotal, cur)}</span>
                           </div>
-                          {txnDetail.total_discount_amount > 0 && (
-                            <div className="flex justify-between px-4 py-2.5">
-                              <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                                <Percent className="h-3.5 w-3.5" /> Discount
-                              </span>
-                              <span className="text-sm font-medium text-red-500">
-                                -{formatCurrency(txnDetail.total_discount_amount, cur)}
-                              </span>
-                            </div>
-                          )}
+                          {txnDetail.total_discount_amount > 0 && (() => {
+                            const discounts = txnDetail.raw_data?.discounts as Array<{ name?: string }> | undefined
+                            const discountNames = discounts?.map(d => d.name).filter(Boolean)
+                            return (
+                              <div className="flex justify-between px-4 py-2.5">
+                                <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                                  <Percent className="h-3.5 w-3.5" /> Discount
+                                  {discountNames && discountNames.length > 0 && (
+                                    <span className="text-xs text-muted-foreground/70">({discountNames.join(', ')})</span>
+                                  )}
+                                </span>
+                                <span className="text-sm font-medium text-red-500">
+                                  -{formatCurrency(txnDetail.total_discount_amount, cur)}
+                                </span>
+                              </div>
+                            )
+                          })()}
                           {txnDetail.total_tax_amount > 0 && (
                             <div className="flex justify-between px-4 py-2.5">
                               <span className="text-sm text-muted-foreground">Tax</span>
@@ -616,39 +621,55 @@ export default function SalesPage() {
                 </div>
 
                 {/* Line Items */}
-                {txnDetail.line_items && txnDetail.line_items.length > 0 && (
-                  <div className="rounded-lg border border-border">
-                    <div className="px-4 py-2.5 border-b border-border bg-muted/30">
-                      <p className="text-sm font-medium">Items ({txnDetail.line_items.length})</p>
-                    </div>
-                    <div className="divide-y divide-border">
-                      {txnDetail.line_items.map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between px-4 py-2.5">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {item.name || 'Unnamed Item'}
-                            </p>
-                            {item.variation_name && (
-                              <p className="text-xs text-muted-foreground">{item.variation_name}</p>
-                            )}
+                {(() => {
+                  const lineItems = txnDetail.line_items && txnDetail.line_items.length > 0
+                    ? txnDetail.line_items
+                    : null
+                  const returnItems = !lineItems
+                    ? (txnDetail.raw_data?.returns as any[] | undefined)
+                        ?.flatMap((ret: any) => ret.return_line_items || [])
+                    : null
+                  const items = lineItems || returnItems
+                  const isReturn = !lineItems && !!returnItems
+
+                  return items && items.length > 0 ? (
+                    <div className="rounded-lg border border-border">
+                      <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+                        <p className="text-sm font-medium">
+                          {isReturn ? 'Refunded Items' : 'Items'} ({items.length})
+                        </p>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {items.map((item: any, idx: number) => (
+                          <div key={idx} className="flex items-center justify-between px-4 py-2.5">
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium truncate ${isReturn ? 'text-red-500' : ''}`}>
+                                {item.name || 'Unnamed Item'}
+                              </p>
+                              {item.variation_name && (
+                                <p className="text-xs text-muted-foreground">{item.variation_name}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 ml-4 shrink-0">
+                              <span className="text-xs text-muted-foreground">
+                                x{item.quantity || '1'}
+                              </span>
+                              <span className={`text-sm font-medium w-20 text-right ${isReturn ? 'text-red-500' : ''}`}>
+                                {isReturn && item.gross_return_money?.amount != null
+                                  ? `-${formatCurrency(item.gross_return_money.amount, item.gross_return_money.currency || txnDetail.amount_money_currency)}`
+                                  : item.total_money?.amount != null
+                                    ? formatCurrency(item.total_money.amount, item.total_money.currency || txnDetail.amount_money_currency)
+                                    : item.base_price_money?.amount != null
+                                      ? formatCurrency(item.base_price_money.amount, item.base_price_money.currency || txnDetail.amount_money_currency)
+                                      : '—'}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-4 ml-4 shrink-0">
-                            <span className="text-xs text-muted-foreground">
-                              x{item.quantity || '1'}
-                            </span>
-                            <span className="text-sm font-medium w-20 text-right">
-                              {item.total_money?.amount != null
-                                ? formatCurrency(item.total_money.amount, item.total_money.currency || txnDetail.amount_money_currency)
-                                : item.base_price_money?.amount != null
-                                  ? formatCurrency(item.base_price_money.amount, item.base_price_money.currency || txnDetail.amount_money_currency)
-                                  : '—'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ) : null
+                })()}
 
                 {/* Categories */}
                 {txnDetail.product_categories && txnDetail.product_categories.length > 0 && (

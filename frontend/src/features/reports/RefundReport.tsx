@@ -14,6 +14,17 @@ function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(amount / 100)
 }
 
+interface RefundedProduct {
+  date: string
+  product_name: string
+  variation_name: string | null
+  quantity: number
+  amount: number
+  amount_gbp: number
+  currency: string
+  location_name: string
+}
+
 export default function RefundReport() {
   const filters = useReportFilters()
 
@@ -46,24 +57,49 @@ export default function RefundReport() {
     },
   })
 
-  const isLoading = summaryLoading || dailyLoading
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ['report-refunded-products', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryFn: () => {
+      const params = filters.buildDaysQueryParams()
+      return apiClient.get<RefundedProduct[]>(`/sales/analytics/refunded-products?${params}`)
+    },
+  })
+
+  const isLoading = summaryLoading || dailyLoading || productsLoading
 
   const handleExport = () => {
     const daily = dailyData || []
-    const headers = ['Date', 'Orders', 'Refunds', 'Refund Amount', 'Refund Rate']
-    const rows = daily.map(d => [
+    const products = productsData || []
+
+    const dailyHeaders = ['Date', 'Orders', 'Refunds', 'Refund Amount', 'Refund Rate']
+    const dailyRows = daily.map(d => [
       formatDateForExcel(d.date),
       d.total_orders,
       d.refund_count,
       penceToPounds(d.refund_amount),
       `${d.refund_rate}%`,
     ] as (string | number)[])
-    exportToExcel([{ name: 'Refunds', headers, rows }], 'Refund_Report')
+
+    const productHeaders = ['Date', 'Product', 'Variant', 'Qty', 'Amount', 'Location']
+    const productRows = products.map(p => [
+      formatDateForExcel(p.date),
+      p.product_name,
+      p.variation_name || '',
+      p.quantity,
+      penceToPounds(p.amount_gbp),
+      p.location_name,
+    ] as (string | number)[])
+
+    exportToExcel([
+      { name: 'Refunded Products', headers: productHeaders, rows: productRows },
+      { name: 'Daily Breakdown', headers: dailyHeaders, rows: dailyRows },
+    ], 'Refund_Report')
   }
 
   const currency = summaryData?.currency || 'GBP'
   const currencySymbol = currency === 'GBP' ? '£' : currency === 'EUR' ? '€' : '$'
   const daily = dailyData || []
+  const products = productsData || []
   const daysWithRefunds = daily.filter(d => d.refund_count > 0).length
 
   return (
@@ -142,6 +178,69 @@ export default function RefundReport() {
           </CardContent>
         </Card>
       )}
+
+      {/* Refunded Products Table */}
+      <Card className="mb-6">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold">Refunded Products</CardTitle>
+          <CardDescription>Individual items returned during this period</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {products.length > 0 ? (
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-card">
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Product</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Qty</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {products.map((product, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-2.5 text-sm text-foreground">
+                        {new Date(product.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-2.5 text-sm font-medium text-foreground">
+                        {product.product_name}
+                        {product.variation_name && (
+                          <span className="text-muted-foreground font-normal"> — {product.variation_name}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-right text-foreground">{product.quantity}</td>
+                      <td className="px-4 py-2.5 text-sm text-right font-semibold text-red-500">
+                        {formatCurrency(product.amount_gbp, 'GBP')}
+                        {product.currency !== 'GBP' && (
+                          <div className="text-[10px] font-normal text-muted-foreground/60">
+                            {formatCurrency(product.amount, product.currency)} → GBP
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-muted-foreground">{product.location_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/40">
+                    <td className="px-4 py-3 text-sm font-semibold text-foreground">Total</td>
+                    <td className="px-4 py-3 text-sm text-foreground">{products.length} items</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">{products.reduce((s, p) => s + p.quantity, 0)}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold text-red-500">
+                      {formatCurrency(products.reduce((s, p) => s + p.amount_gbp, 0), 'GBP')}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-8 text-center">No refunded products for the selected period.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">
