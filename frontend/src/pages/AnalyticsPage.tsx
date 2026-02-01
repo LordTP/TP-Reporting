@@ -76,10 +76,11 @@ interface BudgetPerformanceReport {
 
 // --- Helpers ---
 
-const SMART_PRESETS = ['today', 'this_week', 'this_month', 'this_year'] as const
+const SMART_PRESETS = ['today', 'yesterday', 'this_week', 'this_month', 'this_year'] as const
 
 const PRESET_LABELS: Record<string, string> = {
   today: 'Today',
+  yesterday: 'Yesterday',
   this_week: 'This Week',
   this_month: 'This Month',
   this_year: 'This Year',
@@ -166,7 +167,8 @@ export default function AnalyticsPage() {
 
   // --- Locations & Clients ---
 
-  const { data: allLocations } = useQuery({
+  // Admins: fetch all locations via square accounts
+  const { data: adminLocations } = useQuery({
     queryKey: ['all-locations'],
     queryFn: async () => {
       const accountsData = await apiClient.get('/square/accounts')
@@ -177,8 +179,24 @@ export default function AnalyticsPage() {
       const locationResults = await Promise.all(locationPromises)
       return locationResults.flatMap((result: any) => result.locations || [])
     },
-    enabled: isAdmin || hasMultipleClients,
+    enabled: isAdmin,
   })
+
+  // Non-admins with multiple clients: fetch locations only for their assigned clients
+  const { data: scopedLocations } = useQuery({
+    queryKey: ['scoped-locations', user?.client_ids],
+    queryFn: async () => {
+      const ids = user?.client_ids || []
+      if (ids.length === 0) return []
+      const results = await Promise.all(
+        ids.map((cid: string) => apiClient.get(`/clients/${cid}/locations`))
+      )
+      return results.flatMap((r: any) => r.locations || [])
+    },
+    enabled: !isAdmin && hasMultipleClients,
+  })
+
+  const allLocations = isAdmin ? adminLocations : scopedLocations
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients'],
@@ -448,6 +466,7 @@ export default function AnalyticsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="yesterday">Yesterday</SelectItem>
               <SelectItem value="this_week">This Week</SelectItem>
               <SelectItem value="this_month">This Month</SelectItem>
               <SelectItem value="this_year">This Year</SelectItem>
@@ -492,7 +511,9 @@ export default function AnalyticsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All clients</SelectItem>
-                  {clientsData?.clients?.map((client: any) => (
+                  {(clientsData?.clients || [])
+                    .filter((client: any) => isAdmin || !user?.client_ids || user.client_ids.includes(client.id))
+                    .map((client: any) => (
                     <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -726,7 +747,7 @@ export default function AnalyticsPage() {
                             labelStyle={{ color: '#B8CED9' }}
                             formatter={(value: number, name: string) => [
                               formatCurrency(value, currency),
-                              name === 'budget' ? 'Budget Target' : 'Actual Sales',
+                              name,
                             ]}
                           />
                           <Legend wrapperStyle={{ color: '#B8CED9' }} />

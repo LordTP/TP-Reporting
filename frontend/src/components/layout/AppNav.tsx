@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/authStore'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useThemeStore } from '@/store/themeStore'
 import { usePermissionStore } from '@/store/permissionStore'
+import { apiClient } from '@/lib/api-client'
 import { Sun, Moon, Menu, X } from 'lucide-react'
 
 const FULL_ACCESS_ROLES = ['admin', 'superadmin']
@@ -20,6 +22,13 @@ export default function AppNav() {
     if (user && FULL_ACCESS_ROLES.includes(user.role)) return true
     return permHas(key)
   }
+
+  const { data: ratesData } = useQuery({
+    queryKey: ['exchange-rates-nav'],
+    queryFn: () => apiClient.get('/exchange-rates'),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
   const navLink = (to: string, label: string, mobile = false) => {
     const isActive = location.pathname === to || location.pathname.startsWith(to + '/')
@@ -40,11 +49,11 @@ export default function AppNav() {
         <div className="flex justify-between h-14 sm:h-16 items-center">
           {/* Left: Logo + Desktop nav */}
           <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2 md:flex-col md:items-center md:gap-0">
+            <div className="flex items-center gap-1 md:flex-col md:items-center md:gap-0">
               <h1 className="text-base sm:text-lg font-bold text-foreground tracking-widest uppercase leading-none">
                 Teliporter
               </h1>
-              <span className="text-[10px] sm:text-xs tracking-wider uppercase text-muted-foreground font-medium leading-none md:mt-0.5">
+              <span className="text-[10px] sm:text-xs tracking-wider uppercase text-muted-foreground font-medium leading-none md:-mt-0.5">
                 Reporting
               </span>
             </div>
@@ -61,6 +70,18 @@ export default function AppNav() {
 
           {/* Right: Desktop actions + Hamburger */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {ratesData?.rates && ratesData.rates.length > 0 && (
+              <div className="hidden lg:flex items-center gap-4">
+                {ratesData.rates.map((r: any) => (
+                  <span key={r.id} className="text-xs text-muted-foreground whitespace-nowrap">
+                    <span className="font-medium text-foreground">{r.from_currency}</span>
+                    <span className="mx-0.5">/</span>
+                    <span className="font-medium text-foreground">{r.to_currency}</span>
+                    <span className="ml-1 text-primary font-semibold">{r.rate.toFixed(4)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
             <button
               onClick={toggle}
               className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"

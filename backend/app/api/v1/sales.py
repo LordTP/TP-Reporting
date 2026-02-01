@@ -16,6 +16,10 @@ def calculate_date_range_from_preset(date_preset: str) -> tuple[datetime, dateti
     if date_preset == "today":
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = now
+    elif date_preset == "yesterday":
+        yesterday = now - timedelta(days=1)
+        start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_preset == "this_week":
         # Start of week (Monday)
         days_since_monday = now.weekday()
@@ -376,9 +380,16 @@ async def get_transaction(
     if not transaction:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
+    location_name = transaction.location.name if transaction.location else "Unknown"
+    raw_data = transaction.raw_data or {}
+    refunds = raw_data.get("refunds", [])
+    has_refund = len(refunds) > 0
+    refund_amount = sum(r.get("amount_money", {}).get("amount", 0) for r in refunds) if has_refund else 0
+
     txn_data = {
         "id": str(transaction.id),
         "location_id": str(transaction.location_id),
+        "location_name": location_name,
         "square_transaction_id": transaction.square_transaction_id,
         "transaction_date": transaction.transaction_date,
         "amount_money_amount": transaction.amount_money_amount,
@@ -394,10 +405,12 @@ async def get_transaction(
         "last_4": transaction.last_4,
         "customer_id": transaction.customer_id,
         "payment_status": transaction.payment_status,
+        "has_refund": has_refund,
+        "refund_amount": refund_amount,
         "created_at": transaction.created_at,
         "product_categories": transaction.product_categories,
         "line_items": transaction.line_items,
-        "raw_data": transaction.raw_data,
+        "raw_data": raw_data,
     }
 
     return SalesTransactionDetail(**txn_data)

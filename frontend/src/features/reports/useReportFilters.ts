@@ -3,10 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/authStore'
 
-const SMART_PRESETS = ['today', 'this_week', 'this_month', 'this_year'] as const
+const SMART_PRESETS = ['today', 'yesterday', 'this_week', 'this_month', 'this_year'] as const
 
 export const PRESET_LABELS: Record<string, string> = {
   today: 'Today',
+  yesterday: 'Yesterday',
   this_week: 'This Week',
   this_month: 'This Month',
   this_year: 'This Year',

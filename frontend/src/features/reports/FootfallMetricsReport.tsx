@@ -52,6 +52,12 @@ function buildFootfallDateParams(filters: ReturnType<typeof useReportFilters>): 
     const s = fmt(today)
     return { start_date: s, end_date: s }
   }
+  if (filters.datePreset === 'yesterday') {
+    const yesterday = new Date(today)
+    yesterday.setDate(today.getDate() - 1)
+    const s = fmt(yesterday)
+    return { start_date: s, end_date: s }
+  }
   if (filters.datePreset === 'this_week') {
     const day = today.getDay()
     const diff = day === 0 ? 6 : day - 1

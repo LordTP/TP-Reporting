@@ -152,7 +152,7 @@ export const DashboardPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setShowUserForm(false)
-      setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null })
+      setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [] })
       setUserFormError('')
     },
     onError: (err: any) => {
@@ -166,7 +166,7 @@ export const DashboardPage = () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setEditingUser(null)
       setShowUserForm(false)
-      setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null })
+      setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [] })
       setUserFormError('')
     },
     onError: (err: any) => {
@@ -253,7 +253,9 @@ export const DashboardPage = () => {
   })
 
   const ROLE_OPTIONS = [
+    { value: 'superadmin', label: 'Super Admin' },
     { value: 'admin', label: 'Admin' },
+    { value: 'manager', label: 'Manager' },
     { value: 'store_manager', label: 'Store Manager' },
     { value: 'reporting', label: 'Reporting' },
     { value: 'client', label: 'Client' },
@@ -635,7 +637,7 @@ export const DashboardPage = () => {
                 onClick={() => {
                   setShowUserForm(true)
                   setEditingUser(null)
-                  setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null })
+                  setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [] })
                   setUserFormError('')
                 }}
                 className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm font-medium shadow-md hover:shadow-lg transition-all"
@@ -770,7 +772,7 @@ export const DashboardPage = () => {
                           ...userForm,
                           role: value,
                           client_id: value === 'client' ? userForm.client_id : null,
-                          client_ids: MULTI_CLIENT_ROLES.includes(value) ? userForm.client_ids : [],
+                          client_ids: MULTI_CLIENT_ROLES.includes(value) ? (userForm.client_ids || []) : [],
                         })
                       }}>
                         <SelectTrigger className="w-full h-10 text-sm">
@@ -816,12 +818,13 @@ export const DashboardPage = () => {
                             <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/30 px-1 py-0.5 rounded">
                               <input
                                 type="checkbox"
-                                checked={userForm.client_ids.includes(c.id)}
+                                checked={(userForm.client_ids || []).includes(c.id)}
                                 onChange={(e) => {
+                                  const ids = userForm.client_ids || []
                                   if (e.target.checked) {
-                                    setUserForm({ ...userForm, client_ids: [...userForm.client_ids, c.id] })
+                                    setUserForm({ ...userForm, client_ids: [...ids, c.id] })
                                   } else {
-                                    setUserForm({ ...userForm, client_ids: userForm.client_ids.filter((id: string) => id !== c.id) })
+                                    setUserForm({ ...userForm, client_ids: ids.filter((id: string) => id !== c.id) })
                                   }
                                 }}
                                 className="rounded border-input"

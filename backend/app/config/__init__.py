@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 100
 
+    # Trusted Hosts
+    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
+
     class Config:
         env_file = ".env"
         case_sensitive = True

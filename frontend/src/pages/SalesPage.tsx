@@ -12,7 +12,8 @@ import AppNav from '@/components/layout/AppNav'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { RefreshCw, DollarSign, TrendingUp, Calendar, Filter } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { RefreshCw, DollarSign, TrendingUp, Calendar, Filter, CreditCard, Banknote, MapPin, ChevronRight, Tag, Percent, Receipt } from 'lucide-react'
 
 interface SalesTransaction {
   id: string
@@ -21,12 +22,31 @@ interface SalesTransaction {
   amount_money_amount: number
   amount_money_currency: string
   total_money_amount: number
+  total_money_currency: string
+  total_discount_amount: number
+  total_tax_amount: number
+  total_tip_amount: number
   payment_status: string
   tender_type: string
   card_brand?: string
   last_4?: string
+  customer_id?: string
   has_refund: boolean
   refund_amount: number
+}
+
+interface TransactionDetail extends SalesTransaction {
+  square_transaction_id: string
+  amount_money_usd_equivalent?: number
+  product_categories?: string[]
+  line_items?: Array<{
+    name?: string
+    quantity?: string
+    base_price_money?: { amount?: number; currency?: string }
+    total_money?: { amount?: number; currency?: string }
+    variation_name?: string
+  }>
+  created_at: string
 }
 
 interface CurrencyBreakdown {
@@ -85,6 +105,9 @@ export default function SalesPage() {
     isClientRole ? (user?.client_id || 'all') : 'all'
   )
 
+  // Transaction detail modal state
+  const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null)
+
   // Fetch clients for filter (admins get all, multi-client users get their scoped list)
   const { data: clientsData } = useQuery({
     queryKey: ['clients'],
@@ -92,21 +115,36 @@ export default function SalesPage() {
     enabled: showClientFilter,
   })
 
-  // Fetch all locations for filter
-  const { data: allLocations } = useQuery({
+  // Admins: fetch all locations via square accounts
+  const { data: adminLocations } = useQuery({
     queryKey: ['all-locations'],
     queryFn: async () => {
       const accountsData = await apiClient.get('/square/accounts')
       if (!accountsData.accounts || accountsData.accounts.length === 0) return []
-
       const locationPromises = accountsData.accounts.map((account: any) =>
         apiClient.get(`/square/accounts/${account.id}/locations`)
       )
       const locationResults = await Promise.all(locationPromises)
       return locationResults.flatMap((result: any) => result.locations || [])
     },
-    enabled: isAdmin || hasMultipleClients,
+    enabled: isAdmin,
   })
+
+  // Non-admins with multiple clients: fetch locations only for their assigned clients
+  const { data: scopedLocations } = useQuery({
+    queryKey: ['scoped-locations', user?.client_ids],
+    queryFn: async () => {
+      const ids = user?.client_ids || []
+      if (ids.length === 0) return []
+      const results = await Promise.all(
+        ids.map((cid: string) => apiClient.get(`/clients/${cid}/locations`))
+      )
+      return results.flatMap((r: any) => r.locations || [])
+    },
+    enabled: !isAdmin && hasMultipleClients,
+  })
+
+  const allLocations = isAdmin ? adminLocations : scopedLocations
 
   // Fetch client locations when a client is selected
   const { data: clientLocationsData } = useQuery({
@@ -133,7 +171,7 @@ export default function SalesPage() {
     if (selectedLocation !== 'all') {
       params.append('location_ids', selectedLocation)
     }
-    const smartPresets = ['today', 'this_week', 'this_month', 'this_year']
+    const smartPresets = ['today', 'yesterday', 'this_week', 'this_month', 'this_year']
     if (smartPresets.includes(datePreset)) {
       params.append('date_preset', datePreset)
     } else if (/^\d+$/.test(datePreset)) {
@@ -160,14 +198,20 @@ export default function SalesPage() {
     },
   })
 
+  // Fetch transaction detail when one is selected
+  const { data: txnDetail, isLoading: detailLoading } = useQuery({
+    queryKey: ['transaction-detail', selectedTxnId],
+    queryFn: () => apiClient.get<TransactionDetail>(`/sales/transactions/${selectedTxnId}`),
+    enabled: !!selectedTxnId,
+  })
+
   const transactions = transactionsData?.transactions || []
   const totalCount = transactionsData?.total || 0
   const aggregation = aggregationData
 
   const formatCurrency = (amount: number, currency: string) => {
-    // Amount is in cents, convert to dollars
     const dollars = amount / 100
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-GB', {
       style: 'currency',
       currency: currency,
     }).format(dollars)
@@ -175,6 +219,21 @@ export default function SalesPage() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
+  }
+
+  const getTenderIcon = (type?: string) => {
+    if (type === 'CARD') return <CreditCard className="h-4 w-4" />
+    if (type === 'CASH') return <Banknote className="h-4 w-4" />
+    return <Receipt className="h-4 w-4" />
+  }
+
+  const getTenderLabel = (type?: string, brand?: string, last4?: string) => {
+    if (type === 'CARD') {
+      const parts = [brand, last4 ? `••••${last4}` : null].filter(Boolean)
+      return parts.length > 0 ? parts.join(' ') : 'Card'
+    }
+    if (type === 'CASH') return 'Cash'
+    return type || 'Unknown'
   }
 
   return (
@@ -210,6 +269,7 @@ export default function SalesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
                   <SelectItem value="this_week">This Week</SelectItem>
                   <SelectItem value="this_month">This Month</SelectItem>
                   <SelectItem value="this_year">This Year</SelectItem>
@@ -234,7 +294,9 @@ export default function SalesPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Clients</SelectItem>
-                      {clientsData?.clients?.map((client: any) => (
+                      {(clientsData?.clients || [])
+                        .filter((client: any) => isAdmin || !user?.client_ids || user.client_ids.includes(client.id))
+                        .map((client: any) => (
                         <SelectItem key={client.id} value={client.id}>
                           {client.name}
                         </SelectItem>
@@ -337,7 +399,7 @@ export default function SalesPage() {
           <CardHeader>
             <CardTitle>Recent Transactions</CardTitle>
             <CardDescription>
-              Showing the most recent {transactions.length} transactions
+              Showing the most recent {transactions.length} transactions — click a row for details
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -369,10 +431,15 @@ export default function SalesPage() {
                         Amount
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                        Payment
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                         Type
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                         Location
+                      </th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground w-8">
                       </th>
                     </tr>
                   </thead>
@@ -380,7 +447,8 @@ export default function SalesPage() {
                     {transactions.map((transaction) => (
                       <tr
                         key={transaction.id}
-                        className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                        onClick={() => setSelectedTxnId(transaction.id)}
+                        className="border-b transition-colors hover:bg-muted/50 cursor-pointer group"
                       >
                         <td className="p-4 align-middle">
                           {formatDate(transaction.transaction_date)}
@@ -392,11 +460,19 @@ export default function SalesPage() {
                           )}
                         </td>
                         <td className="p-4 align-middle">
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            {getTenderIcon(transaction.tender_type)}
+                            <span className="text-xs">
+                              {getTenderLabel(transaction.tender_type, transaction.card_brand, transaction.last_4)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-4 align-middle">
                           <span
                             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                               transaction.has_refund
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-green-100 text-green-800'
+                                ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                             }`}
                           >
                             {transaction.has_refund ? 'Refund' : 'Sale'}
@@ -404,6 +480,9 @@ export default function SalesPage() {
                         </td>
                         <td className="p-4 align-middle text-muted-foreground">
                           {transaction.location_name}
+                        </td>
+                        <td className="p-4 align-middle text-right">
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                         </td>
                       </tr>
                     ))}
@@ -414,6 +493,194 @@ export default function SalesPage() {
           </CardContent>
         </Card>
       </main>
+
+      {/* Transaction Detail Modal */}
+      <Dialog open={!!selectedTxnId} onOpenChange={(open) => { if (!open) setSelectedTxnId(null) }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {detailLoading ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Transaction Details</DialogTitle>
+                <DialogDescription>Loading transaction information...</DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            </>
+          ) : txnDetail ? (
+            <>
+              <DialogHeader>
+                <div className="flex items-center justify-between pr-6">
+                  <div>
+                    <DialogTitle className="text-xl">
+                      {formatCurrency(txnDetail.total_money_amount, txnDetail.amount_money_currency)}
+                    </DialogTitle>
+                    <DialogDescription className="mt-1">
+                      {new Date(txnDetail.transaction_date).toLocaleDateString('en-GB', {
+                        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+                      })} at {new Date(txnDetail.transaction_date).toLocaleTimeString('en-GB', {
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </DialogDescription>
+                  </div>
+                  <span
+                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                      txnDetail.has_refund
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                        : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                    }`}
+                  >
+                    {txnDetail.has_refund ? 'Refund' : 'Sale'}
+                  </span>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-5 mt-2">
+                {/* Location & Payment */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                    <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Location</p>
+                      <p className="text-sm font-medium">{txnDetail.location_name}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                    {getTenderIcon(txnDetail.tender_type)}
+                    <div>
+                      <p className="text-xs text-muted-foreground">Payment</p>
+                      <p className="text-sm font-medium">
+                        {getTenderLabel(txnDetail.tender_type, txnDetail.card_brand, txnDetail.last_4)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Financial Breakdown */}
+                <div className="rounded-lg border border-border">
+                  <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+                    <p className="text-sm font-medium">Financial Breakdown</p>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {(() => {
+                      const subtotal = txnDetail.total_money_amount - txnDetail.total_tax_amount - txnDetail.total_tip_amount + txnDetail.total_discount_amount
+                      const cur = txnDetail.amount_money_currency
+                      return (
+                        <>
+                          <div className="flex justify-between px-4 py-2.5">
+                            <span className="text-sm text-muted-foreground">Subtotal</span>
+                            <span className="text-sm font-medium">{formatCurrency(subtotal, cur)}</span>
+                          </div>
+                          {txnDetail.total_discount_amount > 0 && (
+                            <div className="flex justify-between px-4 py-2.5">
+                              <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                                <Percent className="h-3.5 w-3.5" /> Discount
+                              </span>
+                              <span className="text-sm font-medium text-red-500">
+                                -{formatCurrency(txnDetail.total_discount_amount, cur)}
+                              </span>
+                            </div>
+                          )}
+                          {txnDetail.total_tax_amount > 0 && (
+                            <div className="flex justify-between px-4 py-2.5">
+                              <span className="text-sm text-muted-foreground">Tax</span>
+                              <span className="text-sm font-medium">{formatCurrency(txnDetail.total_tax_amount, cur)}</span>
+                            </div>
+                          )}
+                          {txnDetail.total_tip_amount > 0 && (
+                            <div className="flex justify-between px-4 py-2.5">
+                              <span className="text-sm text-muted-foreground">Tip</span>
+                              <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                                {formatCurrency(txnDetail.total_tip_amount, cur)}
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
+                    <div className="flex justify-between px-4 py-2.5 bg-muted/20">
+                      <span className="text-sm font-semibold">Total</span>
+                      <span className="text-sm font-semibold">
+                        {formatCurrency(txnDetail.total_money_amount, txnDetail.amount_money_currency)}
+                      </span>
+                    </div>
+                    {txnDetail.has_refund && txnDetail.refund_amount > 0 && (
+                      <div className="flex justify-between px-4 py-2.5 bg-red-50 dark:bg-red-900/10">
+                        <span className="text-sm font-medium text-red-600 dark:text-red-400">Refunded</span>
+                        <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                          -{formatCurrency(txnDetail.refund_amount, txnDetail.amount_money_currency)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Line Items */}
+                {txnDetail.line_items && txnDetail.line_items.length > 0 && (
+                  <div className="rounded-lg border border-border">
+                    <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+                      <p className="text-sm font-medium">Items ({txnDetail.line_items.length})</p>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {txnDetail.line_items.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between px-4 py-2.5">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {item.name || 'Unnamed Item'}
+                            </p>
+                            {item.variation_name && (
+                              <p className="text-xs text-muted-foreground">{item.variation_name}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 ml-4 shrink-0">
+                            <span className="text-xs text-muted-foreground">
+                              x{item.quantity || '1'}
+                            </span>
+                            <span className="text-sm font-medium w-20 text-right">
+                              {item.total_money?.amount != null
+                                ? formatCurrency(item.total_money.amount, item.total_money.currency || txnDetail.amount_money_currency)
+                                : item.base_price_money?.amount != null
+                                  ? formatCurrency(item.base_price_money.amount, item.base_price_money.currency || txnDetail.amount_money_currency)
+                                  : '—'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Categories */}
+                {txnDetail.product_categories && txnDetail.product_categories.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                    {txnDetail.product_categories.map((cat, idx) => (
+                      <span key={idx} className="text-xs bg-muted px-2 py-1 rounded-md">{cat}</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Metadata */}
+                <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t border-border">
+                  <p>Square ID: <span className="font-mono">{txnDetail.square_transaction_id}</span></p>
+                  <p>Status: {txnDetail.payment_status}</p>
+                  {txnDetail.customer_id && <p>Customer: <span className="font-mono">{txnDetail.customer_id}</span></p>}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Transaction Details</DialogTitle>
+                <DialogDescription>Could not load transaction</DialogDescription>
+              </DialogHeader>
+              <div className="text-center py-8 text-muted-foreground">
+                Transaction not found
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -322,7 +322,10 @@ async def upload_budget_csv(
     if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a .csv")
 
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
     content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 5 MB.")
     try:
         text = content.decode("utf-8-sig")  # handles BOM from Excel
     except UnicodeDecodeError:
