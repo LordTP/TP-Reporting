@@ -56,11 +56,11 @@ export default function TopProductsChart({
                         {item.product_name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-                      <span className="text-muted-foreground text-xs">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 ml-2">
+                      <span className="text-muted-foreground text-xs hidden sm:inline">
                         {item.total_quantity} sold
                       </span>
-                      <span className="font-semibold text-foreground min-w-[80px] text-right">
+                      <span className="font-semibold text-foreground text-sm sm:text-base text-right">
                         {formatCurrency(item.total_revenue)}
                       </span>
                     </div>

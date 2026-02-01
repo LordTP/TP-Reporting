@@ -57,16 +57,16 @@ export default function KPICard({
           style={{ backgroundColor: accentColor }}
         />
       )}
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium text-muted-foreground">{title}</span>
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-center justify-between mb-2 sm:mb-3">
+          <span className="text-xs sm:text-sm font-medium text-muted-foreground">{title}</span>
           {icon && (
-            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-muted/60 text-muted-foreground">
+            <div className="flex items-center justify-center h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-muted/60 text-muted-foreground">
               {icon}
             </div>
           )}
         </div>
-        <div className="text-2xl font-bold tracking-tight">{formatValue(value)}</div>
+        <div className="text-lg sm:text-2xl font-bold tracking-tight">{formatValue(value)}</div>
         {annotation}
         <div className="flex items-center justify-between mt-2">
           {description && <p className="text-xs text-muted-foreground">{description}</p>}

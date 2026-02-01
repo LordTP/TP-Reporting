@@ -55,8 +55,8 @@ export default function HourlySalesChart({
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={350}>
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
             <defs>
               <linearGradient id="hourlySalesGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#FB731E" stopOpacity={0.3} />
@@ -70,7 +70,7 @@ export default function HourlySalesChart({
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
             <XAxis
               dataKey="hourLabel"
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
               stroke="hsl(var(--border))"
               tickLine={false}
               axisLine={false}
@@ -79,21 +79,21 @@ export default function HourlySalesChart({
             <YAxis
               yAxisId="left"
               tickFormatter={formatCurrency}
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
               stroke="hsl(var(--border))"
               tickLine={false}
               axisLine={false}
-              width={65}
+              width={50}
               domain={[() => 0, 'auto']}
             />
             <YAxis
               yAxisId="right"
               orientation="right"
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
               stroke="hsl(var(--border))"
               tickLine={false}
               axisLine={false}
-              width={45}
+              width={35}
               domain={[() => 0, 'auto']}
             />
             <Tooltip

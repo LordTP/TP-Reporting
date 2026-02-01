@@ -35,20 +35,20 @@ export default function SalesBarChart({
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(200 31% 33%)" />
-            <XAxis dataKey="name" tick={{ fill: '#B8CED9' }} stroke="#3A5C6E" />
-            <YAxis tickFormatter={formatCurrency} tick={{ fill: '#B8CED9' }} stroke="#3A5C6E" />
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+            <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} stroke="hsl(var(--border))" tickLine={false} axisLine={false} />
+            <YAxis tickFormatter={formatCurrency} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} stroke="hsl(var(--border))" tickLine={false} axisLine={false} width={50} />
             <Tooltip
               formatter={(value: number, name: string) => [
                 formatCurrency(value),
                 name === 'sales' ? 'Sales' : 'Budget',
               ]}
-              contentStyle={{ backgroundColor: '#1E313B', border: '1px solid #3A5C6E', borderRadius: '8px', color: '#B8CED9' }}
-              labelStyle={{ color: '#B8CED9' }}
+              contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
+              labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
             />
-            <Legend wrapperStyle={{ color: '#B8CED9' }} />
+            <Legend wrapperStyle={{ color: 'hsl(var(--muted-foreground))' }} />
             <Bar dataKey="sales" fill="#FB731E" name="Sales" />
             {data[0]?.budget !== undefined && <Bar dataKey="budget" fill="#10b981" name="Budget" />}
           </BarChart>

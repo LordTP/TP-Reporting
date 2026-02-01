@@ -688,7 +688,7 @@ export default function AnalyticsPage() {
                 <SectionHeader title="Budget Performance" description={`Budget vs actual - ${dateRangeLabel}`} />
 
                 {/* Budget KPIs */}
-                <div className="grid gap-4 grid-cols-1 md:grid-cols-3 mb-6">
+                <div className="grid gap-4 grid-cols-2 md:grid-cols-3 mb-6">
                   <KPICard
                     title="Budget Attainment"
                     value={Number(budgetPerformanceData!.summary.overall_attainment_percentage)}
@@ -737,20 +737,20 @@ export default function AnalyticsPage() {
                       <CardDescription>Actual sales compared to budget targets</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <ResponsiveContainer width="100%" height={320}>
-                        <BarChart data={budgetChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <BarChart data={budgetChartData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
-                          <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#B8CED9' }} stroke="#3A5C6E" />
-                          <YAxis tickFormatter={(v: number) => `${currencySymbol}${(v / 100).toFixed(0)}`} tick={{ fontSize: 12, fill: '#B8CED9' }} stroke="#3A5C6E" />
+                          <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} stroke="hsl(var(--border))" tickLine={false} axisLine={false} />
+                          <YAxis tickFormatter={(v: number) => `${currencySymbol}${(v / 100).toFixed(0)}`} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} stroke="hsl(var(--border))" tickLine={false} axisLine={false} width={50} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: '#1E313B', borderRadius: '8px', border: '1px solid #3A5C6E', color: '#B8CED9' }}
-                            labelStyle={{ color: '#B8CED9' }}
+                            contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
+                            labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
                             formatter={(value: number, name: string) => [
                               formatCurrency(value, currency),
                               name,
                             ]}
                           />
-                          <Legend wrapperStyle={{ color: '#B8CED9' }} />
+                          <Legend wrapperStyle={{ color: 'hsl(var(--muted-foreground))' }} />
                           <Bar dataKey="budget" fill="#94a3b8" name="Budget Target" radius={[4, 4, 0, 0]} />
                           <Bar dataKey="sales" fill="#FB731E" name="Actual Sales" radius={[4, 4, 0, 0]} />
                         </BarChart>
@@ -953,7 +953,7 @@ export default function AnalyticsPage() {
                               <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => formatCurrency(value, currency)} contentStyle={{ backgroundColor: '#1E313B', border: '1px solid #3A5C6E', borderRadius: '8px', color: '#B8CED9' }} />
+                          <Tooltip formatter={(value: number) => formatCurrency(value, currency)} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} />
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="space-y-2">
