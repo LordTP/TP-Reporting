@@ -468,6 +468,42 @@ async def get_import_status(
     return ImportStatus.model_validate(data_import)
 
 
+@router.post("/imports/{import_id}/reset", response_model=ImportStatus)
+async def reset_stuck_import(
+    import_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"])),
+):
+    """
+    Reset a stuck import (IN_PROGRESS → FAILED) so it can be re-triggered.
+    Admin/Superadmin only.
+    """
+    data_import = db.query(DataImport).join(SquareAccount).filter(
+        DataImport.id == import_id,
+        SquareAccount.organization_id == current_user.organization_id,
+    ).first()
+
+    if not data_import:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Import not found",
+        )
+
+    if data_import.status not in (ImportStatusEnum.IN_PROGRESS, ImportStatusEnum.PENDING):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Import is not stuck — current status is {data_import.status.value}",
+        )
+
+    data_import.status = ImportStatusEnum.FAILED
+    data_import.error_message = "Manually reset by admin. Data imported so far has been saved."
+    data_import.completed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(data_import)
+
+    return ImportStatus.model_validate(data_import)
+
+
 @router.post("/sync", response_model=SyncResponse)
 async def trigger_manual_sync(
     sync_request: SyncRequest,

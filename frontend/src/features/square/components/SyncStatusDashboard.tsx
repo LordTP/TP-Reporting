@@ -2,7 +2,7 @@
  * Sync Status Dashboard Component
  * View sync progress and recent imports
  */
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { squareApi } from '../api/squareApi'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,6 +24,15 @@ interface SyncStatusDashboardProps {
 }
 
 export default function SyncStatusDashboard({ accountId, onClose }: SyncStatusDashboardProps) {
+  const queryClient = useQueryClient()
+
+  const resetImportMutation = useMutation({
+    mutationFn: (importId: string) => squareApi.resetImport(importId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['square-sync-status', accountId] })
+    },
+  })
+
   // Fetch sync status
   const { data: syncStatus, isLoading, error, refetch } = useQuery({
     queryKey: ['square-sync-status', accountId],
@@ -161,7 +170,24 @@ export default function SyncStatusDashboard({ accountId, onClose }: SyncStatusDa
                                 </p>
                               </div>
                             </div>
-                            {getStatusBadge(importJob.status)}
+                            <div className="flex items-center gap-2">
+                              {(importJob.status === 'in_progress' || importJob.status === 'pending') && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => resetImportMutation.mutate(importJob.id)}
+                                  disabled={resetImportMutation.isPending}
+                                >
+                                  {resetImportMutation.isPending ? (
+                                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                  ) : (
+                                    <XCircle className="h-3 w-3 mr-1" />
+                                  )}
+                                  Reset
+                                </Button>
+                              )}
+                              {getStatusBadge(importJob.status)}
+                            </div>
                           </div>
 
                           {/* Progress */}

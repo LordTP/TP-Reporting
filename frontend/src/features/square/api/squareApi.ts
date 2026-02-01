@@ -60,6 +60,10 @@ export const squareApi = {
     return await apiClient.get(`/square/imports/${importId}`)
   },
 
+  resetImport: async (importId: string): Promise<DataImport> => {
+    return await apiClient.post(`/square/imports/${importId}/reset`)
+  },
+
   // Sync
   triggerSync: async (request: SyncRequest): Promise<SyncResponse> => {
     return await apiClient.post('/square/sync', request)

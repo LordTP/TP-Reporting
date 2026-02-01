@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from celery.exceptions import SoftTimeLimitExceeded
 import asyncio
 
 import logging
@@ -399,7 +400,7 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
         db.close()
 
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(bind=True, max_retries=3, time_limit=3 * 60 * 60, soft_time_limit=170 * 60)
 def import_historical_data(self, import_id: str, location_ids: Optional[List[str]] = None):
     """
     Import historical Square data for a given date range
@@ -520,6 +521,18 @@ def import_historical_data(self, import_id: str, location_ids: Optional[List[str
             "duplicates": total_duplicates
         }
 
+    except SoftTimeLimitExceeded:
+        logger.warning("Historical import %s hit soft time limit after importing %d transactions", import_id, total_imported if 'total_imported' in dir() else 0)
+
+        try:
+            if data_import:
+                data_import.status = ImportStatus.FAILED
+                data_import.error_message = "Import timed out. The data imported so far has been saved. Please re-trigger the import — it will skip duplicates and continue from where it left off."
+                data_import.completed_at = datetime.utcnow()
+                db.commit()
+        except Exception as update_error:
+            logger.error("Failed to update import status after timeout: %s", update_error)
+
     except Exception as e:
         db.rollback()
 
@@ -568,7 +581,7 @@ def sync_all_active_accounts():
         db.close()
 
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(bind=True, max_retries=3, time_limit=3 * 60 * 60, soft_time_limit=170 * 60)
 def import_square_orders_task(self, import_id: str):
     """
     Background task to import historical Square orders with line items
@@ -684,6 +697,21 @@ def import_square_orders_task(self, import_id: str):
             "imported": total_imported,
             "duplicates": total_duplicates
         }
+
+    except SoftTimeLimitExceeded:
+        logger.warning("Import task %s hit soft time limit after importing %d transactions", import_id, total_imported if 'total_imported' in dir() else 0)
+
+        # Mark as failed with a clear message — do NOT retry
+        try:
+            from app.models.data_import import DataImport, ImportStatus as ImportStatusEnum
+            import_record = db.query(DataImport).filter(DataImport.id == import_id).first()
+            if import_record:
+                import_record.status = ImportStatusEnum.FAILED
+                import_record.error_message = "Import timed out. The data imported so far has been saved. Please re-trigger the import — it will skip duplicates and continue from where it left off."
+                import_record.completed_at = datetime.utcnow()
+                db.commit()
+        except Exception as update_error:
+            logger.error("Failed to update import status after timeout: %s", update_error)
 
     except Exception as e:
         db.rollback()
