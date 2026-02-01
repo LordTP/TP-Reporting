@@ -222,11 +222,11 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
         end_time = datetime.utcnow()
         # For new orders: look back from last sync (or 7 days on first run)
         orders_start = account.last_sync_at if account.last_sync_at else (end_time - timedelta(days=7))
-        # For updated orders (refunds etc): always look back at least 7 days as a safety net
+        # For updated orders (refunds etc): always look back at least 24h as a safety net
         # in case a sync cycle was missed. parse_and_store_order skips unchanged records efficiently.
         updates_since = min(
             account.last_sync_at if account.last_sync_at else (end_time - timedelta(days=7)),
-            end_time - timedelta(days=7)
+            end_time - timedelta(hours=24)
         )
 
         total_synced = 0
@@ -296,8 +296,8 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
         # The Refunds API surfaces refunds immediately (including PENDING),
         # even before they appear on the order object. For each refund found,
         # re-fetch the full order to get the latest state.
-        # 7-day window to catch any refunds on recent orders.
-        refunds_since = end_time - timedelta(days=7)
+        # 24h window is sufficient since this runs every 15 minutes.
+        refunds_since = end_time - timedelta(hours=24)
         try:
             seen_order_ids = set()
             cursor = None
