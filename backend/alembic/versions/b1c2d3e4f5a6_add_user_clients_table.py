@@ -29,13 +29,15 @@ def upgrade():
     op.create_index('ix_user_clients_client_id', 'user_clients', ['client_id'])
 
     # Data migration: copy existing client_id from store_manager/reporting/manager users
-    # into user_clients so they keep their existing assignment
+    # into user_clients so they keep their existing assignment.
+    # Cast role to text to avoid PostgreSQL "unsafe new enum value" error when
+    # enum values were added in a prior migration within the same transaction.
     op.execute("""
         INSERT INTO user_clients (id, user_id, client_id, created_at)
         SELECT gen_random_uuid(), id, client_id, now()
         FROM users
         WHERE client_id IS NOT NULL
-          AND role IN ('store_manager', 'reporting', 'manager')
+          AND role::text IN ('store_manager', 'reporting', 'manager')
     """)
 
 
