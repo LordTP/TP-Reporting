@@ -167,7 +167,7 @@ function Home() {
 
       {/* ========== HERO — two-column on desktop ========== */}
       <div className="lg:min-h-screen flex items-center">
-        <div className="max-w-7xl mx-auto px-6 sm:px-10 w-full grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-20 items-center pt-20 pb-12 lg:py-16">
+        <div className="max-w-[1400px] mx-auto px-6 sm:px-10 w-full grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-20 items-center pt-20 pb-12 lg:py-16">
 
           {/* Left — branding + CTA */}
           <div>
@@ -263,7 +263,7 @@ function Home() {
 
       {/* ========== FEATURES SECTION ========== */}
       <div className="bg-card/40 border-t border-border">
-        <div className="max-w-7xl mx-auto px-6 sm:px-10 py-16 sm:py-24">
+        <div className="max-w-[1400px] mx-auto px-6 sm:px-10 py-16 sm:py-24">
           <div className="text-center mb-12 sm:mb-16">
             <h3 className="text-2xl sm:text-3xl font-semibold text-foreground mb-3">Everything you need</h3>
             <p className="text-muted-foreground max-w-lg mx-auto">
@@ -287,7 +287,7 @@ function Home() {
 
       {/* ========== FOOTER ========== */}
       <div className="border-t border-border">
-        <div className="max-w-7xl mx-auto px-6 sm:px-10 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="max-w-[1400px] mx-auto px-6 sm:px-10 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-muted-foreground/60">Retail reporting by Teliporter</p>
           <Link
             to="/login"
