@@ -9,8 +9,12 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+import logging
+
 from app.config import settings
 from app.database import engine, Base
+
+logger = logging.getLogger(__name__)
 from app.api.v1 import auth, users, organizations, square, locations, sales, dashboards, reports, permissions, budgets, clients, exchange_rates, location_groups, footfall
 
 # Rate limiter instance (shared with route-level decorators)
@@ -21,10 +25,10 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.RATE_
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
-    print("Starting up Teliporter Reporting Platform...")
+    logger.info("Starting up Teliporter Reporting Platform...")
     yield
     # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
 
 
 app = FastAPI(

@@ -10,6 +10,7 @@ import secrets
 import json
 import base64
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, require_role
 from app.models.user import User
@@ -70,6 +71,8 @@ async def oauth_callback(
 
     Returns HTML that redirects back to the frontend with success/error status
     """
+    frontend_origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "*"
+
     try:
         # Decode state to get user info
         state_data = json.loads(base64.urlsafe_b64decode(state.encode()).decode())
@@ -111,28 +114,28 @@ async def oauth_callback(
         <head>
             <title>Square Connected</title>
             <script>
-                window.opener.postMessage({{ type: 'square-oauth-success', accountId: '{square_account.id}' }}, '*');
+                window.opener.postMessage({{ type: 'square-oauth-success', accountId: '{square_account.id}' }}, '{frontend_origin}');
                 window.close();
             </script>
         </head>
         <body>
             <h1>Success!</h1>
             <p>Square account connected successfully. This window will close automatically...</p>
-            <p>If it doesn't close, <a href="http://localhost:5173/square-accounts">click here</a>.</p>
+            <p>If it doesn't close, <a href="{frontend_origin}/square-accounts">click here</a>.</p>
         </body>
         </html>
         """)
 
     except Exception as e:
         # Return HTML that redirects to frontend with error
-        error_message = str(e)
+        error_message = str(e).replace("'", "\\'").replace("<", "&lt;").replace(">", "&gt;")
         return HTMLResponse(content=f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Connection Failed</title>
             <script>
-                window.opener.postMessage({{ type: 'square-oauth-error', error: '{error_message}' }}, '*');
+                window.opener.postMessage({{ type: 'square-oauth-error', error: '{error_message}' }}, '{frontend_origin}');
                 setTimeout(() => window.close(), 3000);
             </script>
         </head>
@@ -140,7 +143,7 @@ async def oauth_callback(
             <h1>Connection Failed</h1>
             <p>Error: {error_message}</p>
             <p>This window will close automatically...</p>
-            <p>If it doesn't close, <a href="http://localhost:5173/square-accounts">click here</a>.</p>
+            <p>If it doesn't close, <a href="{frontend_origin}/square-accounts">click here</a>.</p>
         </body>
         </html>
         """, status_code=400)

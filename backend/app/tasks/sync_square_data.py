@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 import asyncio
 
+import logging
+
 from app.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
 from app.database import SessionLocal
 from app.models.square_account import SquareAccount
 from app.models.location import Location
@@ -50,7 +54,7 @@ def parse_and_store_order(db: Session, order: Dict[str, Any], locations: List[Lo
         location = next((loc for loc in locations if loc.square_location_id == location_id), None)
 
         if not location:
-            print(f"Location not found for order {order_id}, location_id: {location_id}")
+            logger.warning("Location not found for order %s, location_id: %s", order_id, location_id)
             return (False, False)  # Not stored, not duplicate (error)
 
         # Parse datetime with timezone
@@ -120,7 +124,7 @@ def parse_and_store_order(db: Session, order: Dict[str, Any], locations: List[Lo
                 existing.line_items = line_items_data
                 existing.raw_data = order
                 db.commit()
-                print(f"Updated order {order_id}: status={new_status}, refunds={len(new_refunds)}")
+                logger.info("Updated order %s: status=%s, refunds=%d", order_id, new_status, len(new_refunds))
                 return (True, True)  # Updated existing record
 
             return (False, True)  # No changes, skip
@@ -170,7 +174,7 @@ def parse_and_store_order(db: Session, order: Dict[str, Any], locations: List[Lo
 
     except Exception as e:
         db.rollback()
-        print(f"Error storing order {order.get('id')}: {str(e)}")
+        logger.error("Error storing order %s: %s", order.get('id'), e)
         import traceback
         traceback.print_exc()
         return (False, False)  # Not stored, not duplicate (error)
@@ -254,7 +258,7 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
                     break
 
         except Exception as e:
-            print(f"Error syncing new orders: {str(e)}")
+            logger.error("Error syncing new orders: %s", e)
 
         # --- Pass 2: Fetch orders UPDATED since last sync (catches refunds on old orders) ---
         try:
@@ -282,10 +286,10 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
                     break
 
             if total_updated > 0:
-                print(f"Updated {total_updated} existing orders (refunds/status changes)")
+                logger.info("Updated %d existing orders (refunds/status changes)", total_updated)
 
         except Exception as e:
-            print(f"Warning: Updated-orders pass failed: {str(e)}")
+            logger.warning("Updated-orders pass failed: %s", e)
 
         # --- Pass 3: Check Refunds API for pending/recent refunds ---
         # The Refunds API surfaces refunds immediately (including PENDING),
@@ -326,17 +330,17 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
                             elif stored and not was_dup:
                                 total_synced += 1
                     except Exception as e:
-                        print(f"Warning: Failed to fetch order {order_id} for refund: {str(e)}")
+                        logger.warning("Failed to fetch order %s for refund: %s", order_id, e)
 
                 cursor = refunds_response.get("cursor")
                 if not cursor:
                     break
 
             if seen_order_ids:
-                print(f"Checked {len(seen_order_ids)} orders with recent refunds")
+                logger.info("Checked %d orders with recent refunds", len(seen_order_ids))
 
         except Exception as e:
-            print(f"Warning: Refunds pass failed: {str(e)}")
+            logger.warning("Refunds pass failed: %s", e)
 
         # Update last sync time
         account.last_sync_at = end_time
@@ -348,9 +352,9 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
                 from app.services.summary_service import rebuild_daily_summaries_for_locations
                 loc_ids = [str(loc.id) for loc in locations]
                 summaries = rebuild_daily_summaries_for_locations(db, loc_ids)
-                print(f"Rebuilt {summaries} daily summaries after sync")
+                logger.info("Rebuilt %d daily summaries after sync", summaries)
             except Exception as e:
-                print(f"Warning: Failed to rebuild daily summaries: {str(e)}")
+                logger.warning("Failed to rebuild daily summaries: %s", e)
 
         # Update DataImport record if one was created
         if import_id:
@@ -364,7 +368,7 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
                     data_import.completed_at = datetime.utcnow()
                     db.commit()
             except Exception as e:
-                print(f"Warning: Failed to update DataImport record: {str(e)}")
+                logger.warning("Failed to update DataImport record: %s", e)
 
         return {
             "status": "success",
@@ -497,7 +501,7 @@ def import_historical_data(self, import_id: str, location_ids: Optional[List[str
                         break
 
             except Exception as e:
-                print(f"Error importing orders for chunk {current_start} - {chunk_end}: {str(e)}")
+                logger.error("Error importing orders for chunk %s - %s: %s", current_start, chunk_end, e)
 
             current_start = chunk_end
 
@@ -671,9 +675,9 @@ def import_square_orders_task(self, import_id: str):
                 from app.services.summary_service import rebuild_daily_summaries_for_locations
                 loc_ids = [str(loc.id) for loc in locations]
                 summaries = rebuild_daily_summaries_for_locations(db, loc_ids)
-                print(f"Rebuilt {summaries} daily summaries after import")
+                logger.info("Rebuilt %d daily summaries after import", summaries)
             except Exception as e:
-                print(f"Warning: Failed to rebuild daily summaries: {str(e)}")
+                logger.warning("Failed to rebuild daily summaries: %s", e)
 
         return {
             "status": "success",
@@ -694,9 +698,9 @@ def import_square_orders_task(self, import_id: str):
                 import_record.completed_at = datetime.utcnow()
                 db.commit()
         except Exception as update_error:
-            print(f"Failed to update import status: {str(update_error)}")
+            logger.error("Failed to update import status: %s", update_error)
 
-        print(f"Error importing orders: {str(e)}")
+        logger.error("Error importing orders: %s", e)
         import traceback
         traceback.print_exc()
 

@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: teliporter-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: teliporter-backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: teliporter-celery-worker
+    command: celery -A app.celery_app:celery_app worker --loglevel=info --concurrency=4
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
+    restart: always
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: teliporter-celery-beat
+    command: celery -A app.celery_app:celery_app beat --loglevel=info
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
+    restart: always
+
+volumes:
+  redis_data:
