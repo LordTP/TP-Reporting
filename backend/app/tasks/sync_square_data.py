@@ -21,13 +21,9 @@ from app.models.sales_transaction import SalesTransaction
 from app.services.square_service import square_service
 
 
-def get_db():
-    """Get database session for Celery tasks"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def get_celery_db():
+    """Get database session for Celery tasks (direct, not a generator)"""
+    return SessionLocal()
 
 
 def parse_and_store_order(db: Session, order: Dict[str, Any], locations: List[Location]) -> tuple[bool, bool]:
@@ -192,7 +188,7 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
         location_ids: Optional list of location UUIDs to sync. If None, syncs all active locations
         import_id: Optional DataImport UUID to update with results
     """
-    db = next(get_db())
+    db = get_celery_db()
 
     try:
         # Get Square account
@@ -410,7 +406,7 @@ def import_historical_data(self, import_id: str, location_ids: Optional[List[str
         import_id: DataImport record UUID
         location_ids: Optional list of location UUIDs. If None, imports all locations
     """
-    db = next(get_db())
+    db = get_celery_db()
 
     try:
         # Get import record
@@ -556,7 +552,7 @@ def sync_all_active_accounts():
     Periodic task to sync all active Square accounts
     This should be scheduled to run every 15 minutes via Celery Beat
     """
-    db = next(get_db())
+    db = get_celery_db()
 
     try:
         # Get all active Square accounts
@@ -589,7 +585,7 @@ def import_square_orders_task(self, import_id: str):
     Args:
         import_id: DataImport record UUID
     """
-    db = next(get_db())
+    db = get_celery_db()
 
     try:
         from app.models.data_import import DataImport, ImportStatus as ImportStatusEnum
