@@ -14,7 +14,10 @@ engine = create_engine(
     max_overflow=10,
     pool_recycle=300,
     pool_timeout=30,
-    echo=settings.DEBUG
+    echo=settings.DEBUG,
+    connect_args={
+        "options": "-c statement_timeout=120000 -c idle_in_transaction_session_timeout=300000"
+    }
 )
 
 # Create session factory
