@@ -143,6 +143,7 @@ export default function FootfallEntry() {
     mutationFn: (id: string) => apiClient.delete(`/footfall/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['footfall-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['footfall-coverage'] })
     },
   })
 

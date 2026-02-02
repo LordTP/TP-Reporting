@@ -54,6 +54,7 @@ export default function FootfallDialog({ open, onOpenChange, locations, editEntr
       apiClient.post('/footfall/', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['footfall-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['footfall-coverage'] })
       onSuccess()
     },
     onError: (err: any) => {
@@ -67,6 +68,7 @@ export default function FootfallDialog({ open, onOpenChange, locations, editEntr
       apiClient.put(`/footfall/${id}`, { count }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['footfall-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['footfall-coverage'] })
       onSuccess()
     },
     onError: (err: any) => {
