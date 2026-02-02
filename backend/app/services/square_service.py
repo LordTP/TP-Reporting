@@ -423,6 +423,47 @@ class SquareService:
             response.raise_for_status()
             return response.json()
 
+    async def search_catalog_items(
+        self,
+        access_token: str,
+        archived_state: str = "ARCHIVED_STATE_ALL",
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Search catalog items including archived/deactivated ones.
+
+        Uses SearchCatalogItems (POST) instead of ListCatalog (GET) because
+        ListCatalog excludes archived items. archived_state=ARCHIVED_STATE_ALL
+        returns both active and archived items.
+
+        Args:
+            access_token: Square access token
+            archived_state: ARCHIVED_STATE_ALL, ARCHIVED_STATE_ARCHIVED, or ARCHIVED_STATE_NOT_ARCHIVED
+            cursor: Pagination cursor
+
+        Returns:
+            Response with items array and cursor
+        """
+        body: Dict[str, Any] = {
+            "archived_state": archived_state,
+            "limit": 100,
+        }
+        if cursor:
+            body["cursor"] = cursor
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.base_url}/v2/catalog/search-catalog-items",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Square-Version": self.api_version,
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            response.raise_for_status()
+            return response.json()
+
     def create_square_account(
         self,
         db: Session,

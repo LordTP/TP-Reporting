@@ -726,10 +726,9 @@ async def sync_catalog_categories(
         if not cursor:
             break
 
-    # Clear old memberships for this account (full replace per sync)
-    db.query(CatalogItemCategoryMembership).filter(
-        CatalogItemCategoryMembership.square_account_id == account.id,
-    ).delete()
+    # NOTE: We no longer delete old memberships. Items that are archived/drafted
+    # in Square won't appear in the sync response, but their existing mappings
+    # must be preserved so historical transactions still match client filters.
 
     # Helper: extract artist name from category hierarchy
     def _extract_artist(cat_id: str) -> Optional[str]:
@@ -748,14 +747,17 @@ async def sync_catalog_categories(
             return path[1].get("name")
         return None
 
-    # Step 2: Fetch all ITEM objects — map variations to reporting category + all categories
+    # Step 2: Fetch all ITEM objects (including archived/deactivated) via SearchCatalogItems
+    # This uses ARCHIVED_STATE_ALL so drafted/deactivated items are still mapped.
     items_processed = 0
     variations_processed = 0
     memberships_created = 0
     cursor = None
     while True:
-        resp = await square_service.list_catalog(access_token, types="ITEM", cursor=cursor)
-        for obj in resp.get("objects", []):
+        resp = await square_service.search_catalog_items(
+            access_token, archived_state="ARCHIVED_STATE_ALL", cursor=cursor
+        )
+        for obj in resp.get("items", []):
             item_data = obj.get("item_data", {})
             item_id = obj.get("id")
             item_name = item_data.get("name", "Unknown")
@@ -822,15 +824,21 @@ async def sync_catalog_categories(
                     ))
                 variations_processed += 1
 
-                # Insert category memberships (all categories, not just reporting)
+                # Upsert category memberships (additive — never delete old ones)
                 for cid in all_cat_ids:
-                    db.add(CatalogItemCategoryMembership(
-                        square_account_id=account.id,
-                        catalog_object_id=var_id,
-                        item_id=item_id,
-                        category_id=cid,
-                    ))
-                    memberships_created += 1
+                    existing_membership = db.query(CatalogItemCategoryMembership).filter(
+                        CatalogItemCategoryMembership.square_account_id == account.id,
+                        CatalogItemCategoryMembership.catalog_object_id == var_id,
+                        CatalogItemCategoryMembership.category_id == cid,
+                    ).first()
+                    if not existing_membership:
+                        db.add(CatalogItemCategoryMembership(
+                            square_account_id=account.id,
+                            catalog_object_id=var_id,
+                            item_id=item_id,
+                            category_id=cid,
+                        ))
+                        memberships_created += 1
 
         cursor = resp.get("cursor")
         if not cursor:
