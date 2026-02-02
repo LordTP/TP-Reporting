@@ -46,34 +46,53 @@ export default function SquareAccountManager() {
     },
   })
 
+  // Track which account is actively syncing for each action
+  const [syncingAccountId, setSyncingAccountId] = useState<Record<string, string | null>>({
+    locations: null,
+    data: null,
+    catalog: null,
+  })
+
   // Sync locations mutation
   const syncLocationsMutation = useMutation({
-    mutationFn: squareApi.syncLocations,
+    mutationFn: (accountId: string) => {
+      setSyncingAccountId(prev => ({ ...prev, locations: accountId }))
+      return squareApi.syncLocations(accountId)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['square-accounts'] })
       queryClient.invalidateQueries({ queryKey: ['square-locations'] })
     },
+    onSettled: () => setSyncingAccountId(prev => ({ ...prev, locations: null })),
   })
 
   // Sync data (payments/orders) mutation
   const [syncDataResult, setSyncDataResult] = useState<string | null>(null)
   const syncDataMutation = useMutation({
-    mutationFn: (accountId: string) => squareApi.triggerSync({ square_account_id: accountId }),
+    mutationFn: (accountId: string) => {
+      setSyncingAccountId(prev => ({ ...prev, data: accountId }))
+      return squareApi.triggerSync({ square_account_id: accountId })
+    },
     onSuccess: (data) => {
       setSyncDataResult(data.message || 'Sync triggered successfully')
       setTimeout(() => setSyncDataResult(null), 5000)
       queryClient.invalidateQueries({ queryKey: ['square-accounts'] })
     },
+    onSettled: () => setSyncingAccountId(prev => ({ ...prev, data: null })),
   })
 
   // Sync catalog mutation
   const [catalogSyncResult, setCatalogSyncResult] = useState<string | null>(null)
   const syncCatalogMutation = useMutation({
-    mutationFn: squareApi.syncCatalog,
+    mutationFn: (accountId: string) => {
+      setSyncingAccountId(prev => ({ ...prev, catalog: accountId }))
+      return squareApi.syncCatalog(accountId)
+    },
     onSuccess: (data) => {
       setCatalogSyncResult(`Synced ${data.categories_found} categories, ${data.items_processed} items, ${data.variations_mapped} variations`)
       setTimeout(() => setCatalogSyncResult(null), 5000)
     },
+    onSettled: () => setSyncingAccountId(prev => ({ ...prev, catalog: null })),
   })
 
   const handleConnectAccount = () => {
@@ -86,9 +105,7 @@ export default function SquareAccountManager() {
     }
   }
 
-  const handleSyncLocations = (accountId: string) => {
-    syncLocationsMutation.mutate(accountId)
-  }
+
 
   const handleManageLocations = (accountId: string) => {
     setSelectedAccountId(accountId)
@@ -200,15 +217,15 @@ export default function SquareAccountManager() {
                     variant="outline"
                     size="sm"
                     className="w-full"
-                    onClick={() => handleSyncLocations(account.id)}
-                    disabled={syncLocationsMutation.isPending}
+                    onClick={() => syncLocationsMutation.mutate(account.id)}
+                    disabled={syncingAccountId.locations === account.id}
                   >
                     <RefreshCw
                       className={`mr-2 h-4 w-4 ${
-                        syncLocationsMutation.isPending ? 'animate-spin' : ''
+                        syncingAccountId.locations === account.id ? 'animate-spin' : ''
                       }`}
                     />
-                    Sync Locations
+                    {syncingAccountId.locations === account.id ? 'Syncing Locations...' : 'Sync Locations'}
                   </Button>
 
                   <Button
@@ -216,14 +233,14 @@ export default function SquareAccountManager() {
                     size="sm"
                     className="w-full"
                     onClick={() => syncDataMutation.mutate(account.id)}
-                    disabled={syncDataMutation.isPending}
+                    disabled={syncingAccountId.data === account.id}
                   >
                     <RefreshCw
                       className={`mr-2 h-4 w-4 ${
-                        syncDataMutation.isPending ? 'animate-spin' : ''
+                        syncingAccountId.data === account.id ? 'animate-spin' : ''
                       }`}
                     />
-                    {syncDataMutation.isPending ? 'Syncing Data...' : 'Sync Data Now'}
+                    {syncingAccountId.data === account.id ? 'Syncing Data...' : 'Sync Data Now'}
                   </Button>
 
                   <Button
@@ -231,14 +248,14 @@ export default function SquareAccountManager() {
                     size="sm"
                     className="w-full"
                     onClick={() => syncCatalogMutation.mutate(account.id)}
-                    disabled={syncCatalogMutation.isPending}
+                    disabled={syncingAccountId.catalog === account.id}
                   >
                     <Tag
                       className={`mr-2 h-4 w-4 ${
-                        syncCatalogMutation.isPending ? 'animate-spin' : ''
+                        syncingAccountId.catalog === account.id ? 'animate-spin' : ''
                       }`}
                     />
-                    {syncCatalogMutation.isPending ? 'Syncing Catalog...' : 'Sync Catalog'}
+                    {syncingAccountId.catalog === account.id ? 'Syncing Catalog...' : 'Sync Catalog'}
                   </Button>
 
                   <Button
