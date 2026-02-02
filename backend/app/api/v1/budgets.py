@@ -518,11 +518,12 @@ async def get_budget_performance(
     budget_query = budget_query.group_by(Budget.location_id, Budget.date, Budget.currency)
     budgets_data = budget_query.all()
 
-    # Query actual sales from pre-aggregated daily summary (matches analytics page)
+    # Query actual sales from pre-aggregated daily summary (net = gross - refunds)
     sales_query = db.query(
         DailySalesSummary.location_id,
         DailySalesSummary.date,
         DailySalesSummary.total_sales,
+        DailySalesSummary.total_refund_amount,
         DailySalesSummary.currency,
     ).filter(
         DailySalesSummary.location_id.in_([uuid_lib.UUID(lid) for lid in accessible_location_ids])
@@ -535,15 +536,16 @@ async def get_budget_performance(
 
     sales_data = sales_query.all()
 
-    # Create lookup for sales by location and date (amount + currency)
+    # Create lookup for sales by location and date (net sales = gross - refunds)
     sales_lookup = {}
     for sale in sales_data:
         key = (str(sale.location_id), sale.date)
+        net_sales = (sale.total_sales or 0) - (sale.total_refund_amount or 0)
         prev = sales_lookup.get(key)
         if prev:
-            sales_lookup[key] = (prev[0] + (sale.total_sales or 0), prev[1])
+            sales_lookup[key] = (prev[0] + net_sales, prev[1])
         else:
-            sales_lookup[key] = ((sale.total_sales or 0), sale.currency)
+            sales_lookup[key] = (net_sales, sale.currency)
 
     # Get location names
     locations = db.query(Location).filter(
