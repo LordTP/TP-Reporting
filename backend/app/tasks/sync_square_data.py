@@ -296,8 +296,8 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
         # The Refunds API surfaces refunds immediately (including PENDING),
         # even before they appear on the order object. For each refund found,
         # re-fetch the full order to get the latest state.
-        # 24h window is sufficient since this runs every 15 minutes.
-        refunds_since = end_time - timedelta(hours=24)
+        # 7-day window to catch refunds that were missed during sync outages.
+        refunds_since = end_time - timedelta(days=7)
         try:
             seen_order_ids = set()
             cursor = None
