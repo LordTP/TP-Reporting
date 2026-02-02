@@ -2,7 +2,7 @@
  * Square Account Manager Component
  * Main UI for managing Square account connections
  */
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { squareApi } from '../api/squareApi'
 import { Button } from '@/components/ui/button'

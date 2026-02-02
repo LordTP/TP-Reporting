@@ -16,7 +16,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { RefreshCw, Clock, MapPin, AlertCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { RefreshCw, Clock, AlertCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface SyncStatusDashboardProps {

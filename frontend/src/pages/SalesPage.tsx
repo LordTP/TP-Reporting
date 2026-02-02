@@ -7,13 +7,12 @@ import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
-import { useAuth } from '@/features/auth/hooks/useAuth'
 import AppNav from '@/components/layout/AppNav'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { RefreshCw, DollarSign, TrendingUp, Calendar, Filter, CreditCard, Banknote, MapPin, ChevronRight, Tag, Percent, Receipt } from 'lucide-react'
+import { RefreshCw, DollarSign, Calendar, Filter, CreditCard, Banknote, MapPin, ChevronRight, Tag, Percent, Receipt } from 'lucide-react'
 
 interface SalesTransaction {
   id: string
@@ -47,6 +46,7 @@ interface TransactionDetail extends SalesTransaction {
     variation_name?: string
   }>
   created_at: string
+  raw_data?: Record<string, unknown>
 }
 
 interface CurrencyBreakdown {
@@ -62,6 +62,8 @@ interface SalesAggregation {
   average_transaction: number
   currency: string
   by_currency?: CurrencyBreakdown[]
+  total_refunds?: number
+  refunds_by_currency?: CurrencyBreakdown[]
 }
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -92,7 +94,6 @@ function CurrencyBreakdownAnnotation({ breakdown }: { breakdown?: CurrencyBreakd
 
 export default function SalesPage() {
   const { user } = useAuthStore()
-  const { logout } = useAuth()
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const isClientRole = user?.role === 'client'
   const hasMultipleClients = (user?.client_ids?.length ?? 0) > 1
@@ -363,10 +364,10 @@ export default function SalesPage() {
             <CardContent>
               {aggregationLoading ? (
                 <div className="text-2xl font-bold">Loading...</div>
-              ) : aggregation && aggregation.total_refunds > 0 ? (
+              ) : aggregation && (aggregation.total_refunds ?? 0) > 0 ? (
                 <>
                   <div className="text-2xl font-bold text-red-600">
-                    -{formatCurrency(aggregation.total_refunds, aggregation.currency)}
+                    -{formatCurrency(aggregation.total_refunds ?? 0, aggregation.currency)}
                   </div>
                   <CurrencyBreakdownAnnotation breakdown={aggregation.refunds_by_currency} />
                 </>

@@ -261,7 +261,6 @@ export const DashboardPage = () => {
     { value: 'client', label: 'Client' },
   ]
 
-  const CLIENT_LINKABLE_ROLES = ['client', 'store_manager', 'reporting', 'manager']
   const MULTI_CLIENT_ROLES = ['store_manager', 'reporting', 'manager']
 
   const ROLE_BADGE_STYLES: Record<string, string> = {

@@ -4,8 +4,6 @@
  */
 import { useAuthStore } from '@/store/authStore'
 import { usePermissionStore } from '@/store/permissionStore'
-import { useAuth } from '@/features/auth/hooks/useAuth'
-import { Link } from 'react-router-dom'
 import AppNav from '@/components/layout/AppNav'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
@@ -149,7 +147,6 @@ function CurrencyBreakdownAnnotation({ breakdown }: { breakdown?: CurrencyBreakd
 
 export default function AnalyticsPage() {
   const { user } = useAuthStore()
-  const { logout } = useAuth()
   const { hasPermission } = usePermissionStore()
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const isClientRole = user?.role === 'client'

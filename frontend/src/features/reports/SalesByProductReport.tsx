@@ -7,7 +7,7 @@ import KPICard from '@/components/charts/KPICard'
 import { ShoppingBag, DollarSign, TrendingUp, Hash } from 'lucide-react'
 import ExportButton from '@/components/ExportButton'
 import { exportToExcel, penceToPounds } from './exportToExcel'
-import { CurrencyBreakdownAnnotation, CurrencyBreakdownItem } from './CurrencyBreakdown'
+import { CurrencyBreakdownItem } from './CurrencyBreakdown'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 function formatCurrency(amount: number, currency: string) {

@@ -8,7 +8,7 @@ import ExportButton from '@/components/ExportButton'
 import { exportToExcel, penceToPounds, formatDateForExcel } from './exportToExcel'
 import { CurrencyBreakdownAnnotation, CurrencyBreakdownItem } from './CurrencyBreakdown'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, ComposedChart } from 'recharts'
+import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, ComposedChart } from 'recharts'
 
 function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(amount / 100)
