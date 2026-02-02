@@ -362,7 +362,7 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
             try:
                 data_import = db.query(DataImport).filter(DataImport.id == import_id).first()
                 if data_import:
-                    data_import.status = ImportStatusEnum.COMPLETED
+                    data_import.status = ImportStatus.COMPLETED
                     data_import.imported_transactions = total_synced
                     data_import.duplicate_transactions = total_updated
                     data_import.total_transactions = total_synced + total_updated
@@ -386,7 +386,7 @@ def sync_square_payments(self, account_id: str, location_ids: Optional[List[str]
             try:
                 data_import = db.query(DataImport).filter(DataImport.id == import_id).first()
                 if data_import:
-                    data_import.status = ImportStatusEnum.FAILED
+                    data_import.status = ImportStatus.FAILED
                     data_import.error_message = str(e)
                     data_import.completed_at = datetime.utcnow()
                     db.commit()
