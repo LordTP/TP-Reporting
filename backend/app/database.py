@@ -16,7 +16,7 @@ engine = create_engine(
     pool_timeout=30,
     echo=settings.DEBUG,
     connect_args={
-        "options": "-c statement_timeout=120000 -c idle_in_transaction_session_timeout=300000"
+        "options": "-c statement_timeout=120000 -c idle_in_transaction_session_timeout=600000"
     }
 )
 
