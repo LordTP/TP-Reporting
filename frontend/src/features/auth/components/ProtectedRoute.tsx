@@ -11,10 +11,17 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children, requiredRole, requiredPermission }: ProtectedRouteProps) => {
-  const { isAuthenticated, user } = useAuthStore()
+  const { isAuthenticated, user, clearAuth } = useAuthStore()
   const { loaded, hasPermission } = usePermissionStore()
 
-  if (!isAuthenticated) {
+  // Check both Zustand state AND that a token actually exists
+  const hasToken = !!localStorage.getItem('access_token')
+
+  if (!isAuthenticated || !hasToken) {
+    if (isAuthenticated && !hasToken) {
+      // Zustand thinks we're logged in but token is gone — clean up
+      clearAuth()
+    }
     return <Navigate to="/login" replace />
   }
 

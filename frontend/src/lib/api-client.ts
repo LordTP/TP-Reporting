@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { API_BASE_URL } from '@/config/constants'
+import { useAuthStore } from '@/store/authStore'
 
 class ApiClient {
   private axiosInstance: AxiosInstance
@@ -37,24 +38,26 @@ class ApiClient {
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true
 
+          const refreshToken = localStorage.getItem('refresh_token')
+          if (!refreshToken) {
+            useAuthStore.getState().clearAuth()
+            window.location.href = '/login'
+            return Promise.reject(error)
+          }
+
           try {
-            const refreshToken = localStorage.getItem('refresh_token')
-            if (refreshToken) {
-              const response = await axios.post(
-                `${API_BASE_URL}/auth/refresh`,
-                { refresh_token: refreshToken }
-              )
+            const response = await axios.post(
+              `${API_BASE_URL}/auth/refresh`,
+              { refresh_token: refreshToken }
+            )
 
-              const { access_token } = response.data
-              localStorage.setItem('access_token', access_token)
+            const { access_token } = response.data
+            localStorage.setItem('access_token', access_token)
 
-              originalRequest.headers.Authorization = `Bearer ${access_token}`
-              return this.axiosInstance(originalRequest)
-            }
+            originalRequest.headers.Authorization = `Bearer ${access_token}`
+            return this.axiosInstance(originalRequest)
           } catch (refreshError) {
-            // Refresh failed, redirect to login
-            localStorage.removeItem('access_token')
-            localStorage.removeItem('refresh_token')
+            useAuthStore.getState().clearAuth()
             window.location.href = '/login'
             return Promise.reject(refreshError)
           }
