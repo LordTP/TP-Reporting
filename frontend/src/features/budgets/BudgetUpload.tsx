@@ -145,6 +145,7 @@ export default function BudgetUpload() {
   const [dragOver, setDragOver] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [templateLocationId, setTemplateLocationId] = useState<string>('')
+  const [templateYear, setTemplateYear] = useState<string>(new Date().getFullYear().toString())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
 
@@ -234,10 +235,13 @@ export default function BudgetUpload() {
 
     const header = ['date', ...templateLocs.map(l => l.name)].join(',')
     const rows: string[] = []
-    const today = new Date()
+    const year = parseInt(templateYear)
+    const startDate = new Date(year, 0, 1) // Jan 1
+    const endDate = new Date(year, 11, 31) // Dec 31
+    const totalDays = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
 
-    for (let i = 0; i < 365; i++) {
-      const d = new Date(today)
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(startDate)
       d.setDate(d.getDate() + i)
       const dateStr = d.toISOString().split('T')[0]
       const dayData = budgetLookup.get(dateStr)
@@ -254,13 +258,14 @@ export default function BudgetUpload() {
     const a = document.createElement('a')
     a.href = url
     const fileName = isAll
-      ? 'budget_template_All_Locations.csv'
-      : `budget_template_${templateLocs[0].name.replace(/\s+/g, '_')}.csv`
+      ? `budget_template_All_Locations_${templateYear}.csv`
+      : `budget_template_${templateLocs[0].name.replace(/\s+/g, '_')}_${templateYear}.csv`
     a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
     setTemplateDialogOpen(false)
     setTemplateLocationId('')
+    setTemplateYear(new Date().getFullYear().toString())
   }
 
   const result = uploadMutation.data
@@ -307,35 +312,51 @@ export default function BudgetUpload() {
                 Select a location or download for all locations. Existing budget data will be pre-filled.
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
-              <Select value={templateLocationId} onValueChange={setTemplateLocationId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a location" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All Locations</SelectItem>
-                  {(locations || []).map((loc) => (
-                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="py-4 space-y-4">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Location</label>
+                <Select value={templateLocationId} onValueChange={setTemplateLocationId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All Locations</SelectItem>
+                    {(locations || []).map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Year</label>
+                <Select value={templateYear} onValueChange={setTemplateYear}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 5 }, (_, i) => {
+                      const y = new Date().getFullYear() - 3 + i
+                      return <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
               {templateLocationId && (
-                <p className="text-sm text-muted-foreground mt-3">
+                <p className="text-sm text-muted-foreground">
                   {templateLocationId === '__all__'
-                    ? `Template will include ${(locations || []).length} locations with 365 days of dates.`
-                    : <>
-                        Template will contain dates from{' '}
-                        <span className="font-medium text-foreground">{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                        {' '}to{' '}
-                        <span className="font-medium text-foreground">{(() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) })()}</span>
-                      </>
+                    ? `Template will include ${(locations || []).length} locations`
+                    : 'Template will contain dates'
                   }
+                  {' '}from{' '}
+                  <span className="font-medium text-foreground">1 Jan {templateYear}</span>
+                  {' '}to{' '}
+                  <span className="font-medium text-foreground">31 Dec {templateYear}</span>.
                   {' '}Existing budgets will be pre-filled.
                 </p>
               )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setTemplateDialogOpen(false); setTemplateLocationId('') }}>
+              <Button variant="outline" onClick={() => { setTemplateDialogOpen(false); setTemplateLocationId(''); setTemplateYear(new Date().getFullYear().toString()) }}>
                 Cancel
               </Button>
               <Button onClick={handleDownloadTemplate} disabled={!templateLocationId}>

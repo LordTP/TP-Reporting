@@ -18,6 +18,7 @@ from app.models.budget import Budget, BudgetType
 from app.models.location import Location
 from app.models.square_account import SquareAccount
 from app.models.sales_transaction import SalesTransaction
+from app.models.daily_sales_summary import DailySalesSummary
 from app.services.exchange_rate_service import exchange_rate_service
 from app.schemas.budget import (
     BudgetCreate,
@@ -517,29 +518,32 @@ async def get_budget_performance(
     budget_query = budget_query.group_by(Budget.location_id, Budget.date, Budget.currency)
     budgets_data = budget_query.all()
 
-    # Query actual sales for the same period
+    # Query actual sales from pre-aggregated daily summary (matches analytics page)
     sales_query = db.query(
-        SalesTransaction.location_id,
-        func.date(SalesTransaction.transaction_date).label("date"),
-        func.sum(SalesTransaction.total_money_amount).label("total_sales"),
-        SalesTransaction.amount_money_currency.label("currency")
+        DailySalesSummary.location_id,
+        DailySalesSummary.date,
+        DailySalesSummary.total_sales,
+        DailySalesSummary.currency,
     ).filter(
-        SalesTransaction.location_id.in_([uuid_lib.UUID(lid) for lid in accessible_location_ids])
+        DailySalesSummary.location_id.in_([uuid_lib.UUID(lid) for lid in accessible_location_ids])
     )
 
     if start_date_d:
-        sales_query = sales_query.filter(func.date(SalesTransaction.transaction_date) >= start_date_d)
+        sales_query = sales_query.filter(DailySalesSummary.date >= start_date_d)
     if end_date_d:
-        sales_query = sales_query.filter(func.date(SalesTransaction.transaction_date) <= end_date_d)
+        sales_query = sales_query.filter(DailySalesSummary.date <= end_date_d)
 
-    sales_query = sales_query.group_by(SalesTransaction.location_id, func.date(SalesTransaction.transaction_date), SalesTransaction.amount_money_currency)
     sales_data = sales_query.all()
 
-    # Create lookup for sales by location and date
+    # Create lookup for sales by location and date (amount + currency)
     sales_lookup = {}
     for sale in sales_data:
         key = (str(sale.location_id), sale.date)
-        sales_lookup[key] = sale.total_sales or 0
+        prev = sales_lookup.get(key)
+        if prev:
+            sales_lookup[key] = (prev[0] + (sale.total_sales or 0), prev[1])
+        else:
+            sales_lookup[key] = ((sale.total_sales or 0), sale.currency)
 
     # Get location names
     locations = db.query(Location).filter(
@@ -565,12 +569,19 @@ async def get_budget_performance(
 
     for budget_data in budgets_data:
         location_id = str(budget_data.location_id)
-        actual_sales = sales_lookup.get((location_id, budget_data.date), 0)
+        sales_entry = sales_lookup.get((location_id, budget_data.date))
+        actual_sales = sales_entry[0] if sales_entry else 0
+        sales_currency = sales_entry[1] if sales_entry else budget_data.currency
 
-        # Per-row: compare in native currency (budget vs sales for same location)
-        variance = int(actual_sales) - int(budget_data.total_budget)
-        variance_percentage = (variance / int(budget_data.total_budget) * 100) if budget_data.total_budget > 0 else 0.0
-        attainment_percentage = (int(actual_sales) / int(budget_data.total_budget) * 100) if budget_data.total_budget > 0 else 0.0
+        # Convert both to GBP — budget and sales may be in different currencies
+        budget_rate = rates_to_gbp.get(budget_data.currency, 1.0)
+        sales_rate = rates_to_gbp.get(sales_currency, 1.0)
+        converted_budget = round(int(budget_data.total_budget) * budget_rate)
+        converted_sales = round(int(actual_sales) * sales_rate)
+
+        variance = converted_sales - converted_budget
+        variance_percentage = (variance / converted_budget * 100) if converted_budget > 0 else 0.0
+        attainment_percentage = (converted_sales / converted_budget * 100) if converted_budget > 0 else 0.0
 
         # Determine status
         if attainment_percentage >= 100:
@@ -584,33 +595,30 @@ async def get_budget_performance(
             location_id=location_id,
             location_name=location_names.get(location_id, "Unknown"),
             date=budget_data.date,
-            budget_amount=budget_data.total_budget,
-            actual_sales=actual_sales,
+            budget_amount=converted_budget,
+            actual_sales=converted_sales,
             variance=variance,
             variance_percentage=round(variance_percentage, 2),
             attainment_percentage=round(attainment_percentage, 2),
-            currency=budget_data.currency,
+            currency="GBP",
             status=status_val
         ))
 
-        # Convert to GBP for overall totals
-        curr = budget_data.currency
-        rate = rates_to_gbp.get(curr, 1.0)
-        converted_budget = round(int(budget_data.total_budget) * rate)
-        converted_sales = round(int(actual_sales) * rate)
         total_budget += converted_budget
         total_sales += converted_sales
 
         # Track per-currency breakdown
-        if curr not in budget_by_currency:
-            budget_by_currency[curr] = {"currency": curr, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
-        budget_by_currency[curr]["amount"] += int(budget_data.total_budget)
-        budget_by_currency[curr]["converted_amount"] += converted_budget
+        bcurr = budget_data.currency
+        if bcurr not in budget_by_currency:
+            budget_by_currency[bcurr] = {"currency": bcurr, "amount": 0, "converted_amount": 0, "rate": round(budget_rate, 6)}
+        budget_by_currency[bcurr]["amount"] += int(budget_data.total_budget)
+        budget_by_currency[bcurr]["converted_amount"] += converted_budget
 
-        if curr not in sales_by_currency:
-            sales_by_currency[curr] = {"currency": curr, "amount": 0, "converted_amount": 0, "rate": round(rate, 6)}
-        sales_by_currency[curr]["amount"] += int(actual_sales)
-        sales_by_currency[curr]["converted_amount"] += converted_sales
+        scurr = sales_currency
+        if scurr not in sales_by_currency:
+            sales_by_currency[scurr] = {"currency": scurr, "amount": 0, "converted_amount": 0, "rate": round(sales_rate, 6)}
+        sales_by_currency[scurr]["amount"] += int(actual_sales)
+        sales_by_currency[scurr]["converted_amount"] += converted_sales
 
     # Calculate summary (all in GBP)
     overall_variance = total_sales - total_budget

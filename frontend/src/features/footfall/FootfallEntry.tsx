@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, AlertTriangle, CheckCircle2, Filter } from 'lucide-react'
+import { Plus, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { usePermissionStore } from '@/store/permissionStore'
 import FootfallCalendar from './components/FootfallCalendar'
@@ -56,8 +56,6 @@ export default function FootfallEntry() {
   const [dialogDate, setDialogDate] = useState<string>('')
   const [locationFilter, setLocationFilter] = useState('all')
   const [month, setMonth] = useState(() => new Date())
-  const [onlyWithSales, setOnlyWithSales] = useState(true)
-
   const hasToken = !!localStorage.getItem('access_token')
 
   // Fetch locations — same pattern as BudgetUpload
@@ -113,47 +111,32 @@ export default function FootfallEntry() {
     enabled: hasToken,
   })
 
-  // Fetch yesterday's entries to find missing stores
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = yesterday.toISOString().split('T')[0]
-
-  const { data: yesterdayData } = useQuery({
-    queryKey: ['footfall-entries-yesterday', yesterdayStr],
-    queryFn: () => {
-      const params = new URLSearchParams()
-      params.set('start_date', yesterdayStr)
-      params.set('end_date', yesterdayStr)
-      params.set('page_size', '500')
-      return apiClient.get<FootfallListResponse>(`/footfall/?${params.toString()}`)
-    },
-    enabled: hasToken && !!locations && locations.length > 0,
-  })
-
-  // Fetch yesterday's sales by location (for "only with sales" filter)
-  interface SalesByLocationResponse {
-    locations: Array<{ location_id: string; location_name: string; total_transactions: number }>
+  // Fetch footfall coverage (days with sales but no footfall) for the viewed month
+  interface CoverageLocation {
+    location_id: string
+    location_name: string
+    sales_days: number
+    footfall_days: number
+    missing_days: string[]
   }
-  const { data: yesterdaySalesData } = useQuery({
-    queryKey: ['sales-by-location-yesterday', yesterdayStr],
+  interface CoverageResponse {
+    locations: CoverageLocation[]
+    start_date: string
+    end_date: string
+  }
+  const { data: coverageData } = useQuery({
+    queryKey: ['footfall-coverage', monthKey],
     queryFn: () =>
-      apiClient.get<SalesByLocationResponse>(
-        `/sales/analytics/sales-by-location?start_date=${yesterdayStr}&end_date=${yesterdayStr}`
+      apiClient.get<CoverageResponse>(
+        `/footfall/coverage?start_date=${monthRange.start_date}&end_date=${monthRange.end_date}`
       ),
-    enabled: hasToken && onlyWithSales,
+    enabled: hasToken,
   })
 
-  const yesterdayLocationIds = new Set((yesterdayData?.entries || []).map((e) => e.location_id))
-  const locationsWithSalesYesterday = new Set(
-    (yesterdaySalesData?.locations || [])
-      .filter((l) => l.total_transactions > 0)
-      .map((l) => l.location_id)
-  )
-  const missingLocations = (locations || []).filter((loc) => {
-    if (yesterdayLocationIds.has(loc.id)) return false
-    if (onlyWithSales && !locationsWithSalesYesterday.has(loc.id)) return false
-    return true
-  })
+  const [expandedCoverage, setExpandedCoverage] = useState<Set<string>>(new Set())
+  const coverageLocations = coverageData?.locations || []
+  const locationsWithMissing = coverageLocations.filter(l => l.missing_days.length > 0)
+  const totalMissingDays = locationsWithMissing.reduce((sum, l) => sum + l.missing_days.length, 0)
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -220,63 +203,86 @@ export default function FootfallEntry() {
         )}
       </div>
 
-      {/* Missing footfall yesterday */}
-      {locations && locations.length > 0 && yesterdayData && (
+      {/* Footfall Coverage — missing days */}
+      {coverageData && coverageLocations.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {missingLocations.length > 0 ? (
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                )}
-                <CardTitle className="text-base font-semibold">
-                  {missingLocations.length > 0
-                    ? `${missingLocations.length} ${missingLocations.length === 1 ? 'store' : 'stores'} missing footfall yesterday`
-                    : 'All stores have footfall data for yesterday'}
-                </CardTitle>
-              </div>
-              <button
-                onClick={() => setOnlyWithSales(!onlyWithSales)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
-                  onlyWithSales
-                    ? 'bg-primary/10 border-primary/30 text-primary'
-                    : 'bg-muted/30 border-border text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Filter className="h-3 w-3" />
-                Only with sales
-              </button>
+            <div className="flex items-center gap-2">
+              {totalMissingDays > 0 ? (
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              )}
+              <CardTitle className="text-base font-semibold">
+                {totalMissingDays > 0
+                  ? `${totalMissingDays} ${totalMissingDays === 1 ? 'day' : 'days'} missing footfall across ${locationsWithMissing.length} ${locationsWithMissing.length === 1 ? 'location' : 'locations'}`
+                  : 'All locations have complete footfall data this month'}
+              </CardTitle>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {new Date(yesterdayStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-              {onlyWithSales && <span className="ml-2 text-primary">&middot; Filtered to stores with sales yesterday</span>}
-            </p>
+            <CardDescription>
+              Days with sales but no footfall entry recorded &middot; {new Date(monthRange.start_date + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+            </CardDescription>
           </CardHeader>
-          {missingLocations.length > 0 && (
-            <CardContent className="pt-0">
-              <div className="flex flex-wrap gap-2">
-                {missingLocations.map((loc) => (
-                  <button
-                    key={loc.id}
-                    onClick={() => {
-                      if (canManage) {
-                        setEditEntry(null)
-                        setDialogDate(yesterdayStr)
-                        setLocationFilter(loc.id)
-                        setDialogOpen(true)
-                      }
-                    }}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border border-border bg-muted/30 transition-colors ${
-                      canManage ? 'hover:bg-amber-500/10 hover:border-amber-500/30 cursor-pointer' : ''
-                    }`}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    {loc.name}
-                  </button>
-                ))}
-              </div>
+          {locationsWithMissing.length > 0 && (
+            <CardContent className="pt-0 space-y-2">
+              {locationsWithMissing.map((loc) => {
+                const isExpanded = expandedCoverage.has(loc.location_id)
+                return (
+                  <div key={loc.location_id} className="border border-border rounded-lg overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/30 transition-colors text-left"
+                      onClick={() => {
+                        const next = new Set(expandedCoverage)
+                        if (isExpanded) next.delete(loc.location_id)
+                        else next.add(loc.location_id)
+                        setExpandedCoverage(next)
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                        <span className="font-medium text-sm">{loc.location_name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted-foreground">
+                          {loc.footfall_days}/{loc.sales_days} days covered
+                        </span>
+                        <span className="text-amber-600 font-medium">
+                          {loc.missing_days.length} missing
+                        </span>
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-1 border-t border-border/50">
+                        <div className="flex flex-wrap gap-1.5">
+                          {loc.missing_days.map((dateStr) => {
+                            const d = new Date(dateStr + 'T00:00:00')
+                            const label = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+                            return (
+                              <button
+                                key={dateStr}
+                                onClick={() => {
+                                  if (canManage) {
+                                    setEditEntry(null)
+                                    setDialogDate(dateStr)
+                                    setLocationFilter(loc.location_id)
+                                    setDialogOpen(true)
+                                  }
+                                }}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs border border-border bg-muted/30 transition-colors ${
+                                  canManage ? 'hover:bg-amber-500/10 hover:border-amber-500/30 cursor-pointer' : ''
+                                }`}
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+                                {label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </CardContent>
           )}
         </Card>

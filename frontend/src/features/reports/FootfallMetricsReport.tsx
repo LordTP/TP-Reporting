@@ -106,19 +106,29 @@ export default function FootfallMetricsReport() {
     enabled: filters.isDateRangeReady,
   })
 
-  // Fetch sales by location for same period
-  const { data: salesData, isLoading: salesLoading, refetch: refetchSales } = useQuery({
-    queryKey: ['report-footfall-sales', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+  // Fetch sales by location from fast-summary (uses DailySalesSummary, not raw transactions)
+  const { data: summaryData, isLoading: salesLoading, refetch: refetchSales } = useQuery({
+    queryKey: ['report-footfall-sales', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () =>
-      apiClient.get<{ locations: SalesLocationData[] }>(
-        `/sales/analytics/sales-by-location?${filters.buildQueryParams()}`
+      apiClient.get<{ sales_by_location: Array<{ location_id: string; location_name: string; total_sales: number; converted_total_sales: number; total_transactions: number; currency: string }> }>(
+        `/sales/analytics/fast-summary?${filters.buildQueryParams()}`
       ),
     enabled: filters.isDateRangeReady,
   })
 
   const isLoading = footfallLoading || salesLoading
   const entries = footfallData?.entries || []
-  const salesLocations = salesData?.locations || []
+  const salesLocations: SalesLocationData[] = (summaryData?.sales_by_location || []).map(s => {
+    const sales = s.converted_total_sales ?? s.total_sales
+    return {
+      location_id: s.location_id,
+      location_name: s.location_name,
+      total_sales: sales,
+      total_transactions: s.total_transactions,
+      average_transaction: s.total_transactions > 0 ? Math.round(sales / s.total_transactions) : 0,
+      currency: 'GBP',
+    }
+  })
 
   // Build sales lookup by location_id
   const salesByLocationId = useMemo(() => {

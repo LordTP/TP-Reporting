@@ -1,11 +1,11 @@
 """
 Footfall API Endpoints
 """
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from datetime import date
+from sqlalchemy import desc, func, distinct
+from datetime import date, timedelta
 import uuid as uuid_lib
 
 from app.database import get_db
@@ -221,3 +221,83 @@ async def delete_footfall_entry(
 
     db.delete(entry)
     db.commit()
+
+
+@router.get("/coverage", response_model=Dict[str, Any])
+async def get_footfall_coverage(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+):
+    """
+    Returns per-location coverage: days with sales but no footfall entry.
+    Defaults to the last 30 days if no dates provided.
+    """
+    from app.models.daily_sales_summary import DailySalesSummary
+
+    if not end_date:
+        end_date = date.today() - timedelta(days=1)
+    if not start_date:
+        start_date = end_date - timedelta(days=29)
+
+    accessible = _get_accessible_location_ids(db, current_user)
+    if not accessible:
+        return {"locations": [], "start_date": str(start_date), "end_date": str(end_date)}
+
+    # Days with sales per location (transaction_count > 0)
+    sales_days = db.query(
+        DailySalesSummary.location_id,
+        DailySalesSummary.date,
+    ).filter(
+        DailySalesSummary.location_id.in_(accessible),
+        DailySalesSummary.date >= start_date,
+        DailySalesSummary.date <= end_date,
+        DailySalesSummary.transaction_count > 0,
+    ).all()
+
+    # Days with footfall entries per location
+    footfall_days = db.query(
+        FootfallEntry.location_id,
+        FootfallEntry.date,
+    ).filter(
+        FootfallEntry.organization_id == current_user.organization_id,
+        FootfallEntry.location_id.in_(accessible),
+        FootfallEntry.date >= start_date,
+        FootfallEntry.date <= end_date,
+    ).all()
+
+    footfall_set = {(str(r.location_id), r.date) for r in footfall_days}
+
+    # Group missing days by location
+    missing_by_loc: Dict[str, list] = {}
+    sales_by_loc: Dict[str, int] = {}
+    for row in sales_days:
+        loc_id = str(row.location_id)
+        sales_by_loc[loc_id] = sales_by_loc.get(loc_id, 0) + 1
+        if (loc_id, row.date) not in footfall_set:
+            missing_by_loc.setdefault(loc_id, []).append(str(row.date))
+
+    # Get location names
+    loc_ids_needed = set(sales_by_loc.keys())
+    loc_names = {}
+    if loc_ids_needed:
+        locs = db.query(Location).filter(Location.id.in_([uuid_lib.UUID(lid) for lid in loc_ids_needed])).all()
+        loc_names = {str(loc.id): loc.name for loc in locs}
+
+    results = []
+    for loc_id in sorted(loc_ids_needed, key=lambda x: loc_names.get(x, "")):
+        missing = sorted(missing_by_loc.get(loc_id, []))
+        results.append({
+            "location_id": loc_id,
+            "location_name": loc_names.get(loc_id, "Unknown"),
+            "sales_days": sales_by_loc.get(loc_id, 0),
+            "footfall_days": sales_by_loc.get(loc_id, 0) - len(missing),
+            "missing_days": missing,
+        })
+
+    return {
+        "locations": results,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+    }

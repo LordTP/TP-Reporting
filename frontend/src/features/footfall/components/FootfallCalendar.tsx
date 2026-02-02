@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { ChevronLeft, ChevronRight, Footprints, Trash2 } from 'lucide-react'
 
@@ -60,6 +61,10 @@ export default function FootfallCalendar({
   const today = new Date().toISOString().split('T')[0]
 
   const monthLabel = month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const currentYear = new Date().getFullYear()
+  const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - 5 + i)
 
   // Build lookup: date string -> entries (could be multiple locations)
   const entryMap = new Map<string, FootfallEntry[]>()
@@ -123,19 +128,38 @@ export default function FootfallCalendar({
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <CardTitle className="text-base font-semibold">{monthLabel}</CardTitle>
-              <Button variant="outline" size="sm" onClick={handleToday} className="text-xs h-7">
-                Today
-              </Button>
-            </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <button onClick={handlePrev} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
                 <ChevronLeft className="h-4 w-4" />
               </button>
+              <div className="flex items-center gap-1.5">
+                <Select value={String(monthIdx)} onValueChange={(v) => onMonthChange(new Date(year, parseInt(v), 1))}>
+                  <SelectTrigger className="w-[120px] h-8 text-sm font-semibold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MONTHS.map((m, i) => (
+                      <SelectItem key={i} value={String(i)}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={String(year)} onValueChange={(v) => onMonthChange(new Date(parseInt(v), monthIdx, 1))}>
+                  <SelectTrigger className="w-[80px] h-8 text-sm font-semibold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {yearOptions.map((y) => (
+                      <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <button onClick={handleNext} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
                 <ChevronRight className="h-4 w-4" />
               </button>
+              <Button variant="outline" size="sm" onClick={handleToday} className="text-xs h-7 ml-1">
+                Today
+              </Button>
             </div>
           </div>
           {/* Month summary */}
