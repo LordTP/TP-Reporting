@@ -120,7 +120,7 @@ export default function RefundReport() {
           accentColor="#10b981"
         />
         <KPICard
-          title="Refund Amount"
+          title="Net Refund Amount"
           value={summaryData?.total_refund_amount || 0}
           format="currency"
           currency={currency}
