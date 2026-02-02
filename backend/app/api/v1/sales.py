@@ -2598,6 +2598,42 @@ async def get_fast_analytics(
             data["location_name"] = name_map.get(loc_id, "Unknown")
             data["average_transaction"] = round(data["converted_total_sales"] / data["total_transactions"]) if data["total_transactions"] > 0 else 0
 
+    # Aggregate by client (map locations → clients via client_locations)
+    from app.models.client import client_locations as cl
+    by_client: Dict[str, dict] = {}
+    if loc_ids:
+        cl_query = db.query(cl.c.location_id, cl.c.client_id, Client.name).join(
+            Client, Client.id == cl.c.client_id
+        ).filter(cl.c.location_id.in_(loc_ids))
+        # Restrict to user's allowed clients (None = admin, unrestricted)
+        if allowed is not None:
+            cl_query = cl_query.filter(cl.c.client_id.in_(allowed))
+        cl_rows = cl_query.all()
+        loc_to_clients: Dict[str, list] = {}
+        client_names: Dict[str, str] = {}
+        for loc_id_val, client_id_val, client_name in cl_rows:
+            lid = str(loc_id_val)
+            cid = str(client_id_val)
+            loc_to_clients.setdefault(lid, []).append(cid)
+            client_names[cid] = client_name
+
+        for loc_id, loc_data in by_location.items():
+            for cid in loc_to_clients.get(loc_id, []):
+                if cid not in by_client:
+                    by_client[cid] = {
+                        "client_id": cid,
+                        "client_name": client_names.get(cid, "Unknown"),
+                        "total_sales": 0,
+                        "total_transactions": 0,
+                        "location_count": 0,
+                    }
+                by_client[cid]["total_sales"] += loc_data["converted_total_sales"]
+                by_client[cid]["total_transactions"] += loc_data["total_transactions"]
+                by_client[cid]["location_count"] += 1
+
+        for cdata in by_client.values():
+            cdata["average_transaction"] = round(cdata["total_sales"] / cdata["total_transactions"]) if cdata["total_transactions"] > 0 else 0
+
     # Build hourly array (0-23) — average per day so values are comparable across date ranges
     num_days = max(len(by_day), 1)
     hourly = [
@@ -2682,6 +2718,7 @@ async def get_fast_analytics(
             "by_currency": list(tax_currency_breakdown.values()),
         },
         "sales_by_location": sorted(by_location.values(), key=lambda x: x["converted_total_sales"], reverse=True),
+        "sales_by_client": sorted(by_client.values(), key=lambda x: x["total_sales"], reverse=True),
         "exchange_rates": exchange_rates_resp,
     }
     if rates_warning:
@@ -2955,6 +2992,42 @@ async def _fast_summary_category_mode(
     daily_sorted = sorted(by_day.values(), key=lambda x: x["date"])
     exchange_rates_resp = {k: round(v, 6) for k, v in rates_to_gbp.items() if k != "GBP"}
 
+    # Aggregate by client (map locations → clients via client_locations)
+    from app.models.client import client_locations as cl_cat
+    by_client_cat: Dict[str, dict] = {}
+    allowed_cat = _get_allowed_client_ids(current_user, db)
+    if loc_ids:
+        cl_q = db.query(cl_cat.c.location_id, cl_cat.c.client_id, Client.name).join(
+            Client, Client.id == cl_cat.c.client_id
+        ).filter(cl_cat.c.location_id.in_(loc_ids))
+        if allowed_cat is not None:
+            cl_q = cl_q.filter(cl_cat.c.client_id.in_(allowed_cat))
+        cl_rows = cl_q.all()
+        loc_to_clients: Dict[str, list] = {}
+        client_names: Dict[str, str] = {}
+        for loc_id_val, client_id_val, client_name in cl_rows:
+            lid = str(loc_id_val)
+            cid = str(client_id_val)
+            loc_to_clients.setdefault(lid, []).append(cid)
+            client_names[cid] = client_name
+
+        for loc_id_str, loc_data in by_location.items():
+            for cid in loc_to_clients.get(loc_id_str, []):
+                if cid not in by_client_cat:
+                    by_client_cat[cid] = {
+                        "client_id": cid,
+                        "client_name": client_names.get(cid, "Unknown"),
+                        "total_sales": 0,
+                        "total_transactions": 0,
+                        "location_count": 0,
+                    }
+                by_client_cat[cid]["total_sales"] += loc_data["converted_total_sales"]
+                by_client_cat[cid]["total_transactions"] += loc_data["total_transactions"]
+                by_client_cat[cid]["location_count"] += 1
+
+        for cdata in by_client_cat.values():
+            cdata["average_transaction"] = round(cdata["total_sales"] / cdata["total_transactions"]) if cdata["total_transactions"] > 0 else 0
+
     # Build hourly array (0-23) — average per day so values are comparable across date ranges
     num_days = max(len(by_day), 1)
     hourly = [
@@ -3014,6 +3087,7 @@ async def _fast_summary_category_mode(
             "by_currency": list(tax_currency_breakdown.values()),
         },
         "sales_by_location": sorted(by_location.values(), key=lambda x: x["converted_total_sales"], reverse=True),
+        "sales_by_client": sorted(by_client_cat.values(), key=lambda x: x["total_sales"], reverse=True),
         "by_artist": by_artist,
         "exchange_rates": exchange_rates_resp,
         "category_filtered": True,
@@ -3034,6 +3108,7 @@ def _empty_fast_summary():
         "discounts": {"total_discounts": 0, "currency": "GBP"},
         "tax": {"total_tax": 0, "total_tips": 0, "currency": "GBP"},
         "sales_by_location": [],
+        "sales_by_client": [],
         "exchange_rates": {},
     }
 

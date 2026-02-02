@@ -3,6 +3,7 @@
  * Comprehensive analytics hub with sales performance, budget tracking, and location insights
  */
 import { useAuthStore } from '@/store/authStore'
+import { usePermissionStore } from '@/store/permissionStore'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { Link } from 'react-router-dom'
 import AppNav from '@/components/layout/AppNav'
@@ -11,6 +12,7 @@ import { apiClient } from '@/lib/api-client'
 import SalesLineChart from '@/components/charts/SalesLineChart'
 import TopProductsChart from '@/components/charts/TopProductsChart'
 import HourlySalesChart from '@/components/charts/HourlySalesChart'
+import SalesByClientChart from '@/components/charts/SalesByClientChart'
 import KPICard from '@/components/charts/KPICard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -148,6 +150,7 @@ function CurrencyBreakdownAnnotation({ breakdown }: { breakdown?: CurrencyBreakd
 export default function AnalyticsPage() {
   const { user } = useAuthStore()
   const { logout } = useAuth()
+  const { hasPermission } = usePermissionStore()
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const isClientRole = user?.role === 'client'
   const hasMultipleClients = (user?.client_ids?.length ?? 0) > 1
@@ -267,6 +270,7 @@ export default function AnalyticsPage() {
       discounts?: { total_discounts: number; currency: string; by_currency?: CurrencyBreakdown[] }
       tax?: { total_tax: number; total_tips: number; currency: string; by_currency?: CurrencyBreakdown[] }
       sales_by_location: Array<{ location_id: string; location_name: string; total_sales: number; converted_total_sales: number; total_transactions: number; average_transaction: number; currency: string; rate_to_gbp: number }>
+      sales_by_client?: Array<{ client_id: string; client_name: string; total_sales: number; total_transactions: number; location_count: number; average_transaction: number }>
       by_artist?: Array<{ artist_name: string; revenue: number; quantity: number; transaction_count: number }>
       exchange_rates?: Record<string, number>
       rates_warning?: string
@@ -302,6 +306,7 @@ export default function AnalyticsPage() {
   const discountsData = fastData?.discounts
   const taxData = fastData?.tax
   const salesByLocationData = fastData?.sales_by_location
+  const salesByClientData = fastData?.sales_by_client
 
   const byArtistData = fastData?.by_artist
   const isCategoryFiltered = fastData?.category_filtered === true
@@ -861,12 +866,22 @@ export default function AnalyticsPage() {
                 currency={currency}
                 limit={10}
               />
-              <HourlySalesChart
-                data={hourlyData || []}
-                title="Hourly Sales Pattern"
-                description={`Average daily sales by hour - ${dateRangeLabel}`}
-                currency={currency}
-              />
+              <div className="flex flex-col gap-6">
+                <HourlySalesChart
+                  data={hourlyData || []}
+                  title="Hourly Sales Pattern"
+                  description={`Average daily sales by hour - ${dateRangeLabel}`}
+                  currency={currency}
+                />
+                {salesByClientData && salesByClientData.length > 1 && hasPermission('feature:view_sales_by_client') && (
+                  <SalesByClientChart
+                    data={salesByClientData}
+                    title="Sales by Client"
+                    description={`Client performance - ${dateRangeLabel}`}
+                    currency={currency}
+                  />
+                )}
+              </div>
             </div>
 
             {/* ═══════════════════ SALES BY ARTIST ═══════════════════ */}

@@ -29,9 +29,10 @@ ALL_PERMISSIONS = {
     "report:footfall_metrics":        {"label": "Footfall & Conversion",  "category": "reports"},
 
     # Features
-    "feature:export_excel":    {"label": "Export to Excel",  "category": "features"},
-    "feature:manage_budgets":  {"label": "Manage Budgets",   "category": "features"},
-    "feature:manage_footfall": {"label": "Manage Footfall",  "category": "features"},
+    "feature:export_excel":        {"label": "Export to Excel",      "category": "features"},
+    "feature:manage_budgets":      {"label": "Manage Budgets",       "category": "features"},
+    "feature:manage_footfall":     {"label": "Manage Footfall",      "category": "features"},
+    "feature:view_sales_by_client": {"label": "View Sales by Client", "category": "features"},
 }
 
 CONFIGURABLE_ROLES = ["manager", "store_manager", "reporting", "client"]
@@ -47,7 +48,7 @@ DEFAULT_PERMISSIONS = {
         "report:tips_report", "report:hourly_sales_pattern", "report:budget_vs_actual",
         "report:basket_analysis", "report:footfall_metrics",
         "feature:export_excel", "feature:manage_budgets", "feature:manage_footfall",
-        "page:footfall",
+        "feature:view_sales_by_client", "page:footfall",
     },
     "store_manager": {
         "page:analytics", "page:sales", "page:reports",
