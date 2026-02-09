@@ -1,15 +1,17 @@
 import { useState, useCallback, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { Upload, Download, FileText, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
+import { Upload, Download, FileText, CheckCircle2, AlertTriangle, XCircle, Plus, ChevronDown, ChevronRight } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { usePermissionStore } from '@/store/permissionStore'
 import BudgetOverview from './components/BudgetOverview'
+import BudgetCalendar from './components/BudgetCalendar'
+import BudgetDialog from './components/BudgetDialog'
 
 const FULL_ACCESS_ROLES = ['admin', 'superadmin']
 
@@ -37,6 +39,15 @@ interface BudgetRecord {
   created_by: string
   created_at: string
   updated_at: string
+}
+
+interface BudgetEntry {
+  id: string
+  location_id: string
+  date: string
+  budget_amount: number
+  currency: string
+  location_name?: string
 }
 
 interface CSVValidation {
@@ -139,6 +150,17 @@ function validateCSV(text: string, knownLocations: LocationInfo[]): CSVValidatio
   }
 }
 
+function getMonthRange(month: Date) {
+  const year = month.getFullYear()
+  const m = month.getMonth()
+  const start = new Date(year, m, 1)
+  const end = new Date(year, m + 1, 0)
+  return {
+    start_date: start.toISOString().split('T')[0],
+    end_date: end.toISOString().split('T')[0],
+  }
+}
+
 export default function BudgetUpload() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<CSVValidation | null>(null)
@@ -148,6 +170,14 @@ export default function BudgetUpload() {
   const [templateYear, setTemplateYear] = useState<string>(new Date().getFullYear().toString())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
+
+  // Calendar state
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editEntry, setEditEntry] = useState<BudgetEntry | null>(null)
+  const [dialogDate, setDialogDate] = useState('')
+  const [locationFilter, setLocationFilter] = useState('all')
+  const [calMonth, setCalMonth] = useState(() => new Date())
+  const [expandedCoverage, setExpandedCoverage] = useState<Set<string>>(new Set())
 
   const { user } = useAuthStore()
   const permHas = usePermissionStore((s) => s.hasPermission)
@@ -172,12 +202,103 @@ export default function BudgetUpload() {
     enabled: hasToken,
   })
 
-  // Fetch existing budgets
+  // Build location name lookup
+  const locationNameMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const loc of locations || []) {
+      map.set(loc.id, loc.name)
+    }
+    return map
+  }, [locations])
+
+  // Fetch existing budgets (for CSV template pre-fill and BudgetOverview)
   const { data: existingBudgets, isLoading: budgetsLoading } = useQuery({
     queryKey: ['existing-budgets'],
     queryFn: () => apiClient.get<{ budgets: BudgetRecord[]; total: number }>('/budgets/?page_size=1000'),
     enabled: hasToken,
   })
+
+  // Calendar: fetch budget entries for the viewed month
+  const monthRange = getMonthRange(calMonth)
+  const monthKey = `${calMonth.getFullYear()}-${calMonth.getMonth()}`
+  const { data: calendarEntriesData, isLoading: calendarLoading } = useQuery({
+    queryKey: ['budget-entries', locationFilter, monthKey],
+    queryFn: () => {
+      const params = new URLSearchParams()
+      if (locationFilter !== 'all') params.set('location_ids', locationFilter)
+      params.set('start_date', monthRange.start_date)
+      params.set('end_date', monthRange.end_date)
+      params.set('page_size', '1000')
+      return apiClient.get<{ budgets: BudgetRecord[]; total: number }>(`/budgets/?${params.toString()}`)
+    },
+    enabled: hasToken,
+  })
+
+  // Enrich calendar entries with location names
+  const calendarEntries: BudgetEntry[] = useMemo(() => {
+    return (calendarEntriesData?.budgets || []).map((b) => ({
+      id: b.id,
+      location_id: b.location_id,
+      date: b.date,
+      budget_amount: b.budget_amount,
+      currency: b.currency,
+      location_name: locationNameMap.get(b.location_id) || undefined,
+    }))
+  }, [calendarEntriesData, locationNameMap])
+
+  // Calendar: fetch budget coverage (days with sales but no budget)
+  interface CoverageLocation {
+    location_id: string
+    location_name: string
+    sales_days: number
+    budget_days: number
+    missing_days: string[]
+  }
+  interface CoverageResponse {
+    locations: CoverageLocation[]
+    start_date: string
+    end_date: string
+  }
+  const { data: coverageData } = useQuery({
+    queryKey: ['budget-coverage', monthKey],
+    queryFn: () =>
+      apiClient.get<CoverageResponse>(
+        `/budgets/coverage?start_date=${monthRange.start_date}&end_date=${monthRange.end_date}`
+      ),
+    enabled: hasToken,
+  })
+
+  const coverageLocations = coverageData?.locations || []
+  const locationsWithMissing = coverageLocations.filter(l => l.missing_days.length > 0)
+  const totalMissingDays = locationsWithMissing.reduce((sum, l) => sum + l.missing_days.length, 0)
+
+  // Calendar: delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/budgets/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budget-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['budget-coverage'] })
+      queryClient.invalidateQueries({ queryKey: ['existing-budgets'] })
+    },
+  })
+
+  // Calendar: day click handler
+  const handleDayClick = (date: string, existingEntry?: BudgetEntry) => {
+    if (existingEntry) {
+      setEditEntry(existingEntry)
+      setDialogDate('')
+    } else {
+      setEditEntry(null)
+      setDialogDate(date)
+    }
+    setDialogOpen(true)
+  }
+
+  const handleAddBudget = () => {
+    setEditEntry(null)
+    setDialogDate(new Date().toISOString().split('T')[0])
+    setDialogOpen(true)
+  }
 
   // Build lookup of existing budget data: { "YYYY-MM-DD": { locationId: amountInPounds } }
   const budgetLookup = useMemo(() => {
@@ -196,6 +317,8 @@ export default function BudgetUpload() {
       apiClient.postFile<UploadResult>('/budgets/upload-csv', csvFile, { currency: 'GBP' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['existing-budgets'] })
+      queryClient.invalidateQueries({ queryKey: ['budget-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['budget-coverage'] })
     },
   })
 
@@ -293,14 +416,155 @@ export default function BudgetUpload() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Budgets</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Budgets</h2>
           <p className="text-muted-foreground">
             {canManage ? 'Manage daily budget targets per location' : 'View budget targets per location'}
           </p>
         </div>
+        {canManage && (
+          <Button onClick={handleAddBudget}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Budget
+          </Button>
+        )}
       </div>
+
+      {/* Location filter */}
+      <div className="flex gap-4 flex-wrap items-center">
+        <div className="w-full sm:w-56">
+          <Select value={locationFilter} onValueChange={setLocationFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="All Locations" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Locations</SelectItem>
+              {(locations || []).map((loc) => (
+                <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {calendarEntriesData && calendarEntriesData.total > 0 && (
+          <span className="text-sm text-muted-foreground">
+            {calendarEntriesData.total} {calendarEntriesData.total === 1 ? 'entry' : 'entries'} this month
+          </span>
+        )}
+      </div>
+
+      {/* Budget Coverage — missing days */}
+      {coverageData && coverageLocations.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              {totalMissingDays > 0 ? (
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              )}
+              <CardTitle className="text-base font-semibold">
+                {totalMissingDays > 0
+                  ? `${totalMissingDays} ${totalMissingDays === 1 ? 'day' : 'days'} missing budgets across ${locationsWithMissing.length} ${locationsWithMissing.length === 1 ? 'location' : 'locations'}`
+                  : 'All locations have complete budget data this month'}
+              </CardTitle>
+            </div>
+            <CardDescription>
+              Days with sales but no budget entry &middot; {new Date(monthRange.start_date + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+            </CardDescription>
+          </CardHeader>
+          {locationsWithMissing.length > 0 && (
+            <CardContent className="pt-0 space-y-2">
+              {locationsWithMissing.map((loc) => {
+                const isExpanded = expandedCoverage.has(loc.location_id)
+                return (
+                  <div key={loc.location_id} className="border border-border rounded-lg overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/30 transition-colors text-left"
+                      onClick={() => {
+                        const next = new Set(expandedCoverage)
+                        if (isExpanded) next.delete(loc.location_id)
+                        else next.add(loc.location_id)
+                        setExpandedCoverage(next)
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                        <span className="font-medium text-sm">{loc.location_name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted-foreground">
+                          {loc.budget_days}/{loc.sales_days} days covered
+                        </span>
+                        <span className="text-amber-600 font-medium">
+                          {loc.missing_days.length} missing
+                        </span>
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-1 border-t border-border/50">
+                        <div className="flex flex-wrap gap-1.5">
+                          {loc.missing_days.map((dateStr) => {
+                            const d = new Date(dateStr + 'T00:00:00')
+                            const label = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+                            return (
+                              <button
+                                key={dateStr}
+                                onClick={() => {
+                                  if (canManage) {
+                                    setEditEntry(null)
+                                    setDialogDate(dateStr)
+                                    setLocationFilter(loc.location_id)
+                                    setDialogOpen(true)
+                                  }
+                                }}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs border border-border bg-muted/30 transition-colors ${
+                                  canManage ? 'hover:bg-amber-500/10 hover:border-amber-500/30 cursor-pointer' : ''
+                                }`}
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+                                {label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {/* Budget Calendar */}
+      <BudgetCalendar
+        entries={calendarEntries}
+        isLoading={calendarLoading}
+        canManage={canManage}
+        month={calMonth}
+        onMonthChange={setCalMonth}
+        onDayClick={handleDayClick}
+        onDelete={(id) => deleteMutation.mutate(id)}
+        locationFilter={locationFilter}
+      />
+
+      {/* Budget Dialog */}
+      <BudgetDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        locations={locations || []}
+        editEntry={editEntry}
+        defaultDate={dialogDate}
+        defaultLocationId={locationFilter !== 'all' ? locationFilter : undefined}
+        onSuccess={() => {
+          setDialogOpen(false)
+          setEditEntry(null)
+          setDialogDate('')
+        }}
+      />
 
       {/* Template Download Dialog */}
       {canManage && (

@@ -437,6 +437,87 @@ async def upload_budget_csv(
     )
 
 
+@router.get("/coverage")
+async def get_budget_coverage(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+):
+    """
+    Returns per-location coverage: days with sales but no budget entry.
+    Defaults to the last 30 days if no dates provided.
+    """
+    from datetime import timedelta
+
+    if not end_date:
+        end_date = date.today() - timedelta(days=1)
+    if not start_date:
+        start_date = end_date - timedelta(days=29)
+
+    accessible_location_ids = get_accessible_locations(db, current_user)
+    if not accessible_location_ids:
+        return {"locations": [], "start_date": str(start_date), "end_date": str(end_date)}
+
+    loc_uuids = [uuid_lib.UUID(lid) for lid in accessible_location_ids]
+
+    # Days with sales per location (transaction_count > 0)
+    sales_days = db.query(
+        DailySalesSummary.location_id,
+        DailySalesSummary.date,
+    ).filter(
+        DailySalesSummary.location_id.in_(loc_uuids),
+        DailySalesSummary.date >= start_date,
+        DailySalesSummary.date <= end_date,
+        DailySalesSummary.transaction_count > 0,
+    ).all()
+
+    # Days with budget entries per location
+    budget_days = db.query(
+        Budget.location_id,
+        Budget.date,
+    ).filter(
+        Budget.location_id.in_(loc_uuids),
+        Budget.date >= start_date,
+        Budget.date <= end_date,
+    ).all()
+
+    budget_set = {(str(r.location_id), r.date) for r in budget_days}
+
+    # Group missing days by location
+    missing_by_loc: dict[str, list] = {}
+    sales_by_loc: dict[str, int] = {}
+    for row in sales_days:
+        loc_id = str(row.location_id)
+        sales_by_loc[loc_id] = sales_by_loc.get(loc_id, 0) + 1
+        if (loc_id, row.date) not in budget_set:
+            missing_by_loc.setdefault(loc_id, []).append(str(row.date))
+
+    # Get location names
+    loc_ids_needed = set(sales_by_loc.keys())
+    loc_names = {}
+    if loc_ids_needed:
+        locs = db.query(Location).filter(Location.id.in_([uuid_lib.UUID(lid) for lid in loc_ids_needed])).all()
+        loc_names = {str(loc.id): loc.name for loc in locs}
+
+    results = []
+    for loc_id in sorted(loc_ids_needed, key=lambda x: loc_names.get(x, "")):
+        missing = sorted(missing_by_loc.get(loc_id, []))
+        results.append({
+            "location_id": loc_id,
+            "location_name": loc_names.get(loc_id, "Unknown"),
+            "sales_days": sales_by_loc.get(loc_id, 0),
+            "budget_days": sales_by_loc.get(loc_id, 0) - len(missing),
+            "missing_days": missing,
+        })
+
+    return {
+        "locations": results,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+    }
+
+
 @router.get("/locations", response_model=list[dict])
 async def get_budget_locations(
     db: Session = Depends(get_db),
