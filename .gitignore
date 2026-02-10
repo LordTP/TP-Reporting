@@ -99,3 +99,6 @@ Thumbs.db
 # Data exports and docs
 *.csv
 *.pdf
+
+# Claude Code
+CLAUDE.md
