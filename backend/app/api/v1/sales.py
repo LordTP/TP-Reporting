@@ -4,47 +4,65 @@ Sales API Endpoints
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, asc, and_, or_, cast, Integer, text
-from datetime import datetime, timedelta, timezone
+from sqlalchemy import func, desc, asc, and_, or_, cast, Integer, text, select
+from datetime import datetime, timedelta, timezone, date as date_type, time as time_type
 import math
 
 
-def calculate_date_range_from_preset(date_preset: str) -> tuple[datetime, datetime]:
-    """Calculate start_date and end_date based on preset"""
-    now = datetime.utcnow()
+def calculate_date_range_from_preset(
+    date_preset: str,
+    timezone_str: Optional[str] = None,
+) -> tuple[datetime, datetime]:
+    """Calculate start_date and end_date based on preset, in the given timezone.
+    Returns UTC datetimes suitable for filtering transaction_date."""
+    from zoneinfo import ZoneInfo
+
+    if timezone_str:
+        try:
+            tz = ZoneInfo(timezone_str)
+        except (KeyError, ValueError):
+            tz = ZoneInfo("UTC")
+    else:
+        tz = ZoneInfo("UTC")
+
+    now_local = datetime.now(tz)
 
     if date_preset == "today":
-        start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_date = now
+        start_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = now_local
     elif date_preset == "yesterday":
-        yesterday = now - timedelta(days=1)
+        yesterday = now_local - timedelta(days=1)
         start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_preset == "this_week":
         # Start of week (Monday)
-        days_since_monday = now.weekday()
-        start_date = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_date = now
+        days_since_monday = now_local.weekday()
+        start_date = (now_local - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = now_local
     elif date_preset == "this_month":
         # Start of month
-        start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        end_date = now
+        start_date = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_date = now_local
     elif date_preset == "this_year":
         # Start of year
-        start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        end_date = now
+        start_date = now_local.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_date = now_local
     else:
         # Default fallback
-        start_date = now - timedelta(days=60)
-        end_date = now
+        start_date = now_local - timedelta(days=60)
+        end_date = now_local
 
-    return start_date, end_date
+    # Convert back to UTC for DB filtering
+    start_utc = start_date.astimezone(timezone.utc)
+    end_utc = end_date.astimezone(timezone.utc)
+    return start_utc, end_utc
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User, UserRole
 from app.models.sales_transaction import SalesTransaction
 from app.models.location import Location
+from app.utils.timezone_helpers import local_date_col, local_hour_col, local_transaction_dt, utc_to_local
 from app.models.square_account import SquareAccount
 from app.models.catalog_category import CatalogItemCategory
 from app.models.client import Client, user_clients
@@ -199,35 +217,99 @@ def _get_client_filter_context(
     return {"mode": "location", "location_ids": filtered, "catalog_object_ids": set()}
 
 
+def _tz_for_locations(db: Session, location_ids: list) -> Optional[str]:
+    """Return timezone if all locations share one, else None (falls back to UTC)."""
+    if not location_ids:
+        return None
+    tzs = {r[0] for r in db.query(Location.timezone).filter(Location.id.in_(location_ids)).all() if r[0]}
+    return tzs.pop() if len(tzs) == 1 else None
+
+
+def _parse_date(val) -> Optional[date_type]:
+    """Parse a date from string, datetime, date, or None."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date_type):
+        return val
+    if isinstance(val, str):
+        return date_type.fromisoformat(val)
+    return None
+
+
 def _resolve_date_range(
     date_preset: Optional[str],
-    start_date: Optional[datetime],
-    end_date: Optional[datetime],
+    start_date=None,
+    end_date=None,
     days: int = 60,
-) -> tuple[datetime, datetime]:
-    """Resolve date range from preset, explicit dates, or days fallback."""
+    timezone_str: Optional[str] = None,
+) -> tuple:
+    """Resolve date range to (start_date, end_date) as date objects.
+    Accepts strings (YYYY-MM-DD), datetimes, or date objects."""
     if date_preset:
-        return calculate_date_range_from_preset(date_preset)
-    s = start_date or datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days)
-    e = end_date or datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
+        s_dt, e_dt = calculate_date_range_from_preset(date_preset, timezone_str=timezone_str)
+        return s_dt.date(), e_dt.date()
+    today = date_type.today()
+    s = _parse_date(start_date) or (today - timedelta(days=days))
+    e = _parse_date(end_date) or today
     return s, e
 
 
 def _base_sales_filter(
     location_ids: List[str],
-    start: datetime,
-    end: datetime,
+    start,
+    end,
     completed_only: bool = True,
 ):
-    """Build common filter conditions for sales queries."""
+    """Build common filter conditions using exact local-date filtering.
+
+    Each location's transactions are filtered by their LOCAL calendar date
+    (transaction_date AT TIME ZONE location.timezone), so "Feb 9" means
+    Feb 9 at every location regardless of timezone.
+    """
+    # Normalize to date objects
+    s = start.date() if isinstance(start, datetime) else start
+    e = end.date() if isinstance(end, datetime) else end
+
+    # Correlated subquery: look up each transaction's location timezone
+    tz_subq = select(Location.timezone).where(
+        Location.id == SalesTransaction.location_id
+    ).correlate(SalesTransaction).scalar_subquery()
+    local_dt = func.timezone(func.coalesce(tz_subq, 'UTC'), SalesTransaction.transaction_date)
+
+    # Loose UTC bounds for index usage (covers all IANA timezones ±14h)
+    utc_start = datetime.combine(s - timedelta(days=1), time_type.min)
+    utc_end = datetime.combine(e + timedelta(days=2), time_type.min)
+
     conditions = [
         SalesTransaction.location_id.in_(location_ids),
-        SalesTransaction.transaction_date >= start,
-        SalesTransaction.transaction_date <= end,
+        SalesTransaction.transaction_date >= utc_start,
+        SalesTransaction.transaction_date < utc_end,
+        # Precise per-location local date filter
+        func.date(local_dt) >= s,
+        func.date(local_dt) <= e,
     ]
     if completed_only:
         conditions.append(SalesTransaction.payment_status == "COMPLETED")
     return and_(*conditions)
+
+
+def _local_date_conditions(start, end):
+    """Build local-date filter conditions (no location_id or status filter).
+    Use with *_local_date_conditions(start, end) inside .filter() calls."""
+    s = start.date() if isinstance(start, datetime) else start
+    e = end.date() if isinstance(end, datetime) else end
+    tz_subq = select(Location.timezone).where(
+        Location.id == SalesTransaction.location_id
+    ).correlate(SalesTransaction).scalar_subquery()
+    local_dt = func.timezone(func.coalesce(tz_subq, 'UTC'), SalesTransaction.transaction_date)
+    return [
+        SalesTransaction.transaction_date >= datetime.combine(s - timedelta(days=1), time_type.min),
+        SalesTransaction.transaction_date < datetime.combine(e + timedelta(days=2), time_type.min),
+        func.date(local_dt) >= s,
+        func.date(local_dt) <= e,
+    ]
 
 
 def _txn_matches_category(line_items_json, cat_ids: set) -> bool:
@@ -248,8 +330,8 @@ async def list_transactions(
     current_user: User = Depends(get_current_user),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     days: Optional[int] = Query(None, ge=1, le=3650, description="Number of days to look back"),
     payment_status: Optional[str] = Query(None),
@@ -272,7 +354,7 @@ async def list_transactions(
 
     # Resolve date range — only apply default if dates, preset, or days were explicitly given
     if date_preset or start_date or end_date or days:
-        resolved_start, resolved_end = _resolve_date_range(date_preset, start_date, end_date, days=days or 60)
+        resolved_start, resolved_end = _resolve_date_range(date_preset, start_date, end_date, days=days or 60, timezone_str=_tz_for_locations(db, filtered_location_ids))
     else:
         resolved_start, resolved_end = None, None
 
@@ -285,10 +367,17 @@ async def list_transactions(
         # location_ids already handled by _get_client_filter_context in location mode
         pass
 
-    if resolved_start:
-        query = query.filter(SalesTransaction.transaction_date >= resolved_start)
-    if resolved_end:
-        query = query.filter(SalesTransaction.transaction_date <= resolved_end)
+    if resolved_start is not None and resolved_end is not None:
+        # Exact local date filtering (query already joins Location)
+        local_dt = func.timezone(func.coalesce(Location.timezone, 'UTC'), SalesTransaction.transaction_date)
+        utc_lo = datetime.combine(resolved_start - timedelta(days=1), time_type.min)
+        utc_hi = datetime.combine(resolved_end + timedelta(days=2), time_type.min)
+        query = query.filter(
+            SalesTransaction.transaction_date >= utc_lo,
+            SalesTransaction.transaction_date < utc_hi,
+            func.date(local_dt) >= resolved_start,
+            func.date(local_dt) <= resolved_end,
+        )
     if payment_status:
         query = query.filter(SalesTransaction.payment_status == payment_status)
     if tender_type:
@@ -427,8 +516,8 @@ async def get_sales_aggregation(
     current_user: User = Depends(get_current_user),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     days: Optional[int] = Query(None, ge=1, le=3650, description="Number of days to look back"),
     currency: str = Query("GBP", description="Currency for aggregation"),
@@ -440,7 +529,7 @@ async def get_sales_aggregation(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days=days or 60)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days=days or 60, timezone_str=_tz_for_locations(db, filtered))
 
     from app.services.exchange_rate_service import exchange_rate_service as _fx
 
@@ -542,8 +631,8 @@ async def get_sales_summary(
     current_user: User = Depends(get_current_user),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     currency: str = Query("GBP"),
 ):
@@ -554,7 +643,7 @@ async def get_sales_summary(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, timezone_str=_tz_for_locations(db, filtered))
 
     base = _base_sales_filter(filtered, start, end)
 
@@ -571,11 +660,13 @@ async def get_sales_summary(
         by_status: Dict[str, int] = {}
         daily_map: Dict[str, Dict[str, Any]] = {}
 
-        # Build location name lookup
+        # Build location name and timezone lookups
         loc_name_map: Dict[str, str] = {}
+        loc_tz_map: Dict[str, str] = {}
         if filtered:
-            for (lid, lname) in db.query(Location.id, Location.name).filter(Location.id.in_(filtered)).all():
+            for (lid, lname, ltz) in db.query(Location.id, Location.name, Location.timezone).filter(Location.id.in_(filtered)).all():
                 loc_name_map[str(lid)] = lname or "Unknown"
+                loc_tz_map[str(lid)] = ltz or "UTC"
 
         # First pass: collect currencies
         all_cur: set = set()
@@ -600,8 +691,8 @@ async def get_sales_summary(
             t = tender or "UNKNOWN"
             by_tender_type[t] = by_tender_type.get(t, 0) + gbp_amt
             by_status[status] = by_status.get(status, 0) + 1
-            dk = txn_date.date().isoformat()
             loc_str = str(loc_id)
+            dk = utc_to_local(txn_date, loc_tz_map.get(loc_str, "UTC")).date().isoformat()
             map_key = f"{dk}|{loc_str}"
             if map_key not in daily_map:
                 daily_map[map_key] = {"date": dk, "total_sales": 0, "transaction_count": 0, "location_id": loc_str, "location_name": loc_name_map.get(loc_str, "Unknown")}
@@ -635,7 +726,7 @@ async def get_sales_summary(
 
     # Group by date + location + currency so we can convert
     daily_rows = db.query(
-        func.date(SalesTransaction.transaction_date).label("date"),
+        func.date(local_transaction_dt()).label("date"),
         SalesTransaction.location_id,
         Location.name.label("location_name"),
         SalesTransaction.amount_money_currency,
@@ -644,11 +735,11 @@ async def get_sales_summary(
     ).join(Location, SalesTransaction.location_id == Location.id).filter(
         base
     ).group_by(
-        func.date(SalesTransaction.transaction_date),
+        func.date(local_transaction_dt()),
         SalesTransaction.location_id,
         Location.name,
         SalesTransaction.amount_money_currency,
-    ).order_by(func.date(SalesTransaction.transaction_date), Location.name).all()
+    ).order_by(func.date(local_transaction_dt()), Location.name).all()
 
     for r in daily_rows:
         all_cur.add(r.amount_money_currency or "GBP")
@@ -723,8 +814,8 @@ async def get_sales_by_location(
     current_user: User = Depends(get_current_user),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None),
     currency: str = Query("GBP"),
 ):
@@ -737,7 +828,7 @@ async def get_sales_by_location(
     allowed = _get_allowed_client_ids(current_user, db)
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
-    start, end = _resolve_date_range(date_preset, start_date, end_date)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, timezone_str=_tz_for_locations(db, filtered))
 
     if not filtered:
         return {"locations": [], "by_currency": None}
@@ -897,8 +988,8 @@ async def get_top_products(
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
-    start_date: Optional[datetime] = Query(None, description="Custom start date"),
-    end_date: Optional[datetime] = Query(None, description="Custom end date"),
+    start_date: Optional[str] = Query(None, description="Custom start date"),
+    end_date: Optional[str] = Query(None, description="Custom end date"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -910,9 +1001,10 @@ async def get_top_products(
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    filtered = ctx["location_ids"]
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
-    if not ctx["location_ids"]:
+    if not filtered:
         return {"products": [], "total_unique_products": 0}
 
     from app.services.exchange_rate_service import exchange_rate_service as _fx
@@ -922,7 +1014,7 @@ async def get_top_products(
         SalesTransaction.line_items,
         SalesTransaction.amount_money_currency,
     ).filter(
-        _base_sales_filter(ctx["location_ids"], start, end, completed_only=False),
+        _base_sales_filter(filtered, start, end, completed_only=False),
     ).yield_per(500).all()
 
     # Collect all currencies first
@@ -1000,8 +1092,8 @@ async def get_product_categories(
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
-    start_date: Optional[datetime] = Query(None, description="Custom start date"),
-    end_date: Optional[datetime] = Query(None, description="Custom end date"),
+    start_date: Optional[str] = Query(None, description="Custom start date"),
+    end_date: Optional[str] = Query(None, description="Custom end date"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1010,9 +1102,10 @@ async def get_product_categories(
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    filtered = ctx["location_ids"]
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
-    if not ctx["location_ids"]:
+    if not filtered:
         return {"categories": [], "products": [], "variants": [], "total_items": 0, "total_revenue": 0}
 
     # Build catalog_object_id → category_name lookup from the cache table
@@ -1036,7 +1129,7 @@ async def get_product_categories(
         SalesTransaction.line_items,
         SalesTransaction.amount_money_currency,
     ).filter(
-        _base_sales_filter(ctx["location_ids"], start, end, completed_only=False),
+        _base_sales_filter(filtered, start, end, completed_only=False),
     ).yield_per(500).all()
 
     all_cur = {r.amount_money_currency or "GBP" for r in rows}
@@ -1145,8 +1238,8 @@ async def get_basket_analytics(
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
-    start_date: Optional[datetime] = Query(None, description="Custom start date"),
-    end_date: Optional[datetime] = Query(None, description="Custom end date"),
+    start_date: Optional[str] = Query(None, description="Custom start date"),
+    end_date: Optional[str] = Query(None, description="Custom end date"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1157,7 +1250,7 @@ async def get_basket_analytics(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
     empty = {"average_order_value": 0, "average_items_per_order": 0, "total_orders": 0, "total_items": 0, "currency": "GBP"}
     if not filtered:
@@ -1255,8 +1348,8 @@ async def get_hourly_sales(
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
-    start_date: Optional[datetime] = Query(None, description="Custom start date"),
-    end_date: Optional[datetime] = Query(None, description="Custom end date"),
+    start_date: Optional[str] = Query(None, description="Custom start date"),
+    end_date: Optional[str] = Query(None, description="Custom end date"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1267,7 +1360,7 @@ async def get_hourly_sales(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
     empty_hours = [{"hour": h, "sales": 0, "transactions": 0, "items": 0} for h in range(24)]
     if not filtered:
@@ -1281,27 +1374,34 @@ async def get_hourly_sales(
     if cat_ids is not None:
         from app.services.exchange_rate_service import exchange_rate_service as _fx_cat_h
 
+        # Build timezone lookup
+        loc_tz_map: Dict[str, str] = {}
+        if filtered:
+            for (lid, ltz) in db.query(Location.id, Location.timezone).filter(Location.id.in_(filtered)).all():
+                loc_tz_map[str(lid)] = ltz or "UTC"
+
         # First pass: collect matched transactions and currencies
         matched = []
         all_cur_h: set = set()
-        for (txn_date, line_items_json, total_amount, txn_cur) in db.query(
+        for (txn_date, line_items_json, total_amount, txn_cur, loc_id) in db.query(
             SalesTransaction.transaction_date, SalesTransaction.line_items,
             SalesTransaction.amount_money_amount, SalesTransaction.amount_money_currency,
+            SalesTransaction.location_id,
         ).filter(base).yield_per(500):
             if not _txn_matches_category(line_items_json, cat_ids):
                 continue
             cur = txn_cur or "GBP"
             all_cur_h.add(cur)
-            matched.append((txn_date, int(total_amount or 0), cur, line_items_json))
+            matched.append((txn_date, int(total_amount or 0), cur, line_items_json, str(loc_id)))
 
         rates_h, _ = _fx_cat_h.get_rates_to_gbp(db, current_user.organization_id, all_cur_h or {"GBP"})
 
         hourly_stats = {h: {"hour": h, "sales": 0, "transactions": 0, "items": 0} for h in range(24)}
         hourly_cur_bk_cat: Dict[str, dict] = {}
-        for txn_date, total_amount, cur, line_items_json in matched:
+        for txn_date, total_amount, cur, line_items_json, loc_str in matched:
             rate = rates_h.get(cur, 1.0)
             converted = round(total_amount * rate)
-            h = txn_date.hour
+            h = utc_to_local(txn_date, loc_tz_map.get(loc_str, "UTC")).hour
             hourly_stats[h]["sales"] += converted
             hourly_stats[h]["transactions"] += 1
             if cur not in hourly_cur_bk_cat:
@@ -1319,14 +1419,14 @@ async def get_hourly_sales(
 
     # Location mode: SQL aggregation, grouped by currency for conversion
     from app.services.exchange_rate_service import exchange_rate_service as _fx
-    hour_col = func.extract('hour', SalesTransaction.transaction_date).label("hour")
+    hour_col = func.extract('hour', local_transaction_dt()).label("hour")
 
     rows = db.query(
         hour_col,
         SalesTransaction.amount_money_currency,
         func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).label("transactions"),
-    ).filter(base).group_by(hour_col, SalesTransaction.amount_money_currency).all()
+    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(hour_col, SalesTransaction.amount_money_currency).all()
 
     all_cur = {r.amount_money_currency or "GBP" for r in rows}
     rates, _ = _fx.get_rates_to_gbp(db, current_user.organization_id, all_cur or {"GBP"})
@@ -1348,12 +1448,13 @@ async def get_hourly_sales(
 
     hours_with_data = {int(row.hour) for row in rows}
     if hours_with_data:
-        for (txn_date, line_items_json) in db.query(
-            SalesTransaction.transaction_date, SalesTransaction.line_items
+        _loc_tz = {str(r[0]): (r[1] or "UTC") for r in db.query(Location.id, Location.timezone).filter(Location.id.in_(filtered)).all()}
+        for (txn_date, line_items_json, _lid) in db.query(
+            SalesTransaction.transaction_date, SalesTransaction.line_items, SalesTransaction.location_id
         ).filter(base).yield_per(1000):
             if not line_items_json:
                 continue
-            h = txn_date.hour
+            h = utc_to_local(txn_date, _loc_tz.get(str(_lid), "UTC")).hour
             for item in line_items_json:
                 hourly_stats[h]["items"] += int(item.get("quantity", "1"))
 
@@ -1374,8 +1475,8 @@ async def get_refunds_analytics(
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
-    start_date: Optional[datetime] = Query(None, description="Custom start date"),
-    end_date: Optional[datetime] = Query(None, description="Custom end date"),
+    start_date: Optional[str] = Query(None, description="Custom start date"),
+    end_date: Optional[str] = Query(None, description="Custom end date"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1386,7 +1487,7 @@ async def get_refunds_analytics(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
     if not filtered:
         return {"total_refunds": 0, "total_refund_amount": 0, "refund_rate": 0, "currency": "GBP"}
@@ -1429,8 +1530,7 @@ async def get_refunds_analytics(
                 SalesTransaction.raw_data["returns"],
             ).filter(
                 SalesTransaction.location_id.in_(list(matched_locs)),
-                SalesTransaction.transaction_date >= start,
-                SalesTransaction.transaction_date <= end,
+                *_local_date_conditions(start, end),
                 SalesTransaction.raw_data["returns"] != None,  # noqa: E711
             ).all()
             for (rcurrency, returns_json) in return_rows:
@@ -1534,8 +1634,8 @@ async def get_refunds_daily(
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1546,7 +1646,7 @@ async def get_refunds_daily(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
     if not filtered:
         return []
@@ -1559,6 +1659,10 @@ async def get_refunds_daily(
     if cat_ids is not None:
         daily_map: Dict[str, dict] = {}
         matched_locs: set = set()
+        loc_tz_map: Dict[str, str] = {}
+        if filtered:
+            for (lid, ltz) in db.query(Location.id, Location.timezone).filter(Location.id.in_(filtered)).all():
+                loc_tz_map[str(lid)] = ltz or "UTC"
 
         # Lightweight scan — no raw_data
         for (txn_date, line_items_json, amount, loc_id) in db.query(
@@ -1577,7 +1681,7 @@ async def get_refunds_daily(
                 continue
 
             matched_locs.add(loc_id)
-            date_key = txn_date.date().isoformat()
+            date_key = utc_to_local(txn_date, loc_tz_map.get(str(loc_id), "UTC")).date().isoformat()
             if date_key not in daily_map:
                 daily_map[date_key] = {"date": date_key, "total_orders": 0, "total_sales": 0, "refund_count": 0, "refund_amount": 0}
             daily_map[date_key]["total_orders"] += 1
@@ -1588,24 +1692,23 @@ async def get_refunds_daily(
         if matched_locs:
             all_cur = set(r[0] for r in db.query(SalesTransaction.amount_money_currency).filter(
                 SalesTransaction.location_id.in_(list(matched_locs)),
-                SalesTransaction.transaction_date >= start,
-                SalesTransaction.transaction_date <= end,
+                *_local_date_conditions(start, end),
             ).distinct().all())
             rates, _ = _fx_daily.get_rates_to_gbp(db, current_user.organization_id, all_cur or {"GBP"})
 
-            for (txn_date, rcurrency, returns_json) in db.query(
+            for (txn_date, rcurrency, returns_json, loc_id_ret) in db.query(
                 SalesTransaction.transaction_date,
                 SalesTransaction.amount_money_currency,
                 SalesTransaction.raw_data["returns"],
+                SalesTransaction.location_id,
             ).filter(
                 SalesTransaction.location_id.in_(list(matched_locs)),
-                SalesTransaction.transaction_date >= start,
-                SalesTransaction.transaction_date <= end,
+                *_local_date_conditions(start, end),
                 SalesTransaction.raw_data["returns"] != None,  # noqa: E711
             ).all():
                 if not returns_json or not isinstance(returns_json, list):
                     continue
-                date_key = txn_date.date().isoformat()
+                date_key = utc_to_local(txn_date, loc_tz_map.get(str(loc_id_ret), "UTC")).date().isoformat()
                 if date_key not in daily_map:
                     daily_map[date_key] = {"date": date_key, "total_orders": 0, "total_sales": 0, "refund_count": 0, "refund_amount": 0}
                 rate = rates.get(rcurrency or "GBP", 1.0)
@@ -1627,11 +1730,11 @@ async def get_refunds_daily(
     from app.services.exchange_rate_service import exchange_rate_service as _fx
 
     daily_totals = db.query(
-        func.date(SalesTransaction.transaction_date).label("date"),
+        func.date(local_transaction_dt()).label("date"),
         SalesTransaction.amount_money_currency,
         func.count(SalesTransaction.id).label("total_orders"),
         func.sum(SalesTransaction.amount_money_amount).label("total_sales"),
-    ).filter(base).group_by(func.date(SalesTransaction.transaction_date), SalesTransaction.amount_money_currency).all()
+    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(func.date(local_transaction_dt()), SalesTransaction.amount_money_currency).all()
 
     all_cur = {r.amount_money_currency or "GBP" for r in daily_totals}
     rates, _ = _fx.get_rates_to_gbp(db, current_user.organization_id, all_cur or {"GBP"})
@@ -1651,12 +1754,13 @@ async def get_refunds_daily(
             func.coalesce(SalesTransaction.raw_data['refunds'], text("'[]'::jsonb"))
         ) > 0,
     )
-    for (txn_date, raw_data_json, cur) in db.query(
-        SalesTransaction.transaction_date, SalesTransaction.raw_data, SalesTransaction.amount_money_currency
+    _loc_tz = {str(r[0]): (r[1] or "UTC") for r in db.query(Location.id, Location.timezone).filter(Location.id.in_(filtered)).all()}
+    for (txn_date, raw_data_json, cur, _lid) in db.query(
+        SalesTransaction.transaction_date, SalesTransaction.raw_data, SalesTransaction.amount_money_currency, SalesTransaction.location_id
     ).filter(refund_filter).yield_per(500):
         if not raw_data_json:
             continue
-        date_key = txn_date.date().isoformat()
+        date_key = utc_to_local(txn_date, _loc_tz.get(str(_lid), "UTC")).date().isoformat()
         rate = rates.get(cur or "GBP", 1.0)
         if date_key not in daily_map:
             daily_map[date_key] = {"date": date_key, "total_orders": 0, "total_sales": 0, "refund_count": 0, "refund_amount": 0}
@@ -1681,8 +1785,8 @@ async def get_refunded_products(
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1692,7 +1796,7 @@ async def get_refunded_products(
     allowed = _get_allowed_client_ids(current_user, db)
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
     if not filtered:
         return []
@@ -1765,8 +1869,8 @@ async def get_tax_summary(
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1777,7 +1881,7 @@ async def get_tax_summary(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
     empty = {"total_tax": 0, "total_sales": 0, "total_transactions": 0, "tax_rate": 0, "daily": [], "by_location": [], "currency": "GBP"}
     if not filtered:
@@ -1791,7 +1895,9 @@ async def get_tax_summary(
     if cat_ids is not None:
         from app.services.exchange_rate_service import exchange_rate_service as _fx_tax_cat
 
-        loc_name_map = {str(loc.id): loc.name for loc in db.query(Location.id, Location.name).filter(Location.id.in_(filtered)).all()}
+        _loc_rows = db.query(Location.id, Location.name, Location.timezone).filter(Location.id.in_(filtered)).all()
+        loc_name_map = {str(r.id): r.name for r in _loc_rows}
+        loc_tz_map: Dict[str, str] = {str(r.id): (r.timezone or "UTC") for r in _loc_rows}
 
         matched = []
         all_cur_tax: set = set()
@@ -1821,7 +1927,7 @@ async def get_tax_summary(
             total_tax += conv_tax
             total_sales += conv_sales
             total_transactions += 1
-            dk = txn_date.date().isoformat()
+            dk = utc_to_local(txn_date, loc_tz_map.get(loc_id, "UTC")).date().isoformat()
             if dk not in daily_map:
                 daily_map[dk] = {"date": dk, "tax": 0, "sales": 0, "transactions": 0}
             daily_map[dk]["tax"] += conv_tax
@@ -1852,12 +1958,12 @@ async def get_tax_summary(
     ).filter(base).group_by(SalesTransaction.amount_money_currency).all()
 
     daily_rows = db.query(
-        func.date(SalesTransaction.transaction_date).label("date"),
+        func.date(local_transaction_dt()).label("date"),
         SalesTransaction.amount_money_currency,
         func.sum(SalesTransaction.total_tax_amount).label("tax"),
         func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).label("transactions"),
-    ).filter(base).group_by(func.date(SalesTransaction.transaction_date), SalesTransaction.amount_money_currency).order_by(func.date(SalesTransaction.transaction_date)).all()
+    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(func.date(local_transaction_dt()), SalesTransaction.amount_money_currency).order_by(func.date(local_transaction_dt())).all()
 
     loc_rows = db.query(
         Location.id.label("location_id"),
@@ -1926,8 +2032,8 @@ async def get_discount_summary(
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1938,7 +2044,7 @@ async def get_discount_summary(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
     if not filtered or (cat_ids is not None and not cat_ids):
         return {"total_discounts": 0, "total_sales": 0, "discount_rate": 0, "total_transactions": 0, "daily": [], "by_location": [], "by_code": [], "currency": "GBP"}
@@ -1958,8 +2064,10 @@ async def get_discount_summary(
             SalesTransaction.raw_data,
         ).filter(base).yield_per(500)
 
-        # Build location name lookup
-        loc_name_map = {str(loc.id): loc.name for loc in db.query(Location.id, Location.name).filter(Location.id.in_(filtered)).all()}
+        # Build location name and timezone lookups
+        _loc_rows = db.query(Location.id, Location.name, Location.timezone).filter(Location.id.in_(filtered)).all()
+        loc_name_map = {str(r.id): r.name for r in _loc_rows}
+        loc_tz_map: Dict[str, str] = {str(r.id): (r.timezone or "UTC") for r in _loc_rows}
 
         # Collect all currencies first pass isn't needed — collect during iteration
         all_currencies: set = set()
@@ -1998,7 +2106,7 @@ async def get_discount_summary(
             disc_cur_bk[cur]["converted_amount"] += conv_disc
 
             # Daily
-            d_key = txn_date.date().isoformat() if hasattr(txn_date, "date") else str(txn_date)[:10]
+            d_key = utc_to_local(txn_date, loc_tz_map.get(loc_id, "UTC")).date().isoformat() if hasattr(txn_date, "date") else str(txn_date)[:10]
             if d_key not in daily_agg:
                 daily_agg[d_key] = {"discounts": 0, "sales": 0, "transactions": 0}
             daily_agg[d_key]["discounts"] += conv_disc
@@ -2057,12 +2165,12 @@ async def get_discount_summary(
 
     # Daily grouped by currency
     daily_rows = db.query(
-        func.date(SalesTransaction.transaction_date).label("date"),
+        func.date(local_transaction_dt()).label("date"),
         SalesTransaction.amount_money_currency,
         func.sum(SalesTransaction.total_discount_amount).label("discounts"),
         func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).label("transactions"),
-    ).filter(base).group_by(func.date(SalesTransaction.transaction_date), SalesTransaction.amount_money_currency).order_by(func.date(SalesTransaction.transaction_date)).all()
+    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(func.date(local_transaction_dt()), SalesTransaction.amount_money_currency).order_by(func.date(local_transaction_dt())).all()
 
     for r in daily_rows:
         all_cur.add(r.amount_money_currency or "GBP")
@@ -2177,8 +2285,8 @@ async def get_tips_summary(
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -2189,7 +2297,7 @@ async def get_tips_summary(
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
     if not filtered or (cat_ids is not None and not cat_ids):
         return {"total_tips": 0, "total_sales": 0, "tip_rate": 0, "total_transactions": 0, "tipped_transactions": 0, "daily": [], "by_location": [], "by_method": [], "currency": "GBP"}
@@ -2200,7 +2308,9 @@ async def get_tips_summary(
     if cat_ids is not None:
         from app.services.exchange_rate_service import exchange_rate_service as _fx_tips_cat
 
-        loc_name_map = {str(loc.id): loc.name for loc in db.query(Location.id, Location.name).filter(Location.id.in_(filtered)).all()}
+        _loc_rows = db.query(Location.id, Location.name, Location.timezone).filter(Location.id.in_(filtered)).all()
+        loc_name_map = {str(r.id): r.name for r in _loc_rows}
+        loc_tz_map: Dict[str, str] = {str(r.id): (r.timezone or "UTC") for r in _loc_rows}
 
         # First pass: collect matched transactions and currencies
         matched_tips = []
@@ -2247,7 +2357,7 @@ async def get_tips_summary(
             tips_cur_bk_cat[cur]["amount"] += tip_val
             tips_cur_bk_cat[cur]["converted_amount"] += conv_tip
 
-            d_key = txn_date.date().isoformat() if hasattr(txn_date, "date") else str(txn_date)[:10]
+            d_key = utc_to_local(txn_date, loc_tz_map.get(loc_id, "UTC")).date().isoformat() if hasattr(txn_date, "date") else str(txn_date)[:10]
             if d_key not in daily_agg:
                 daily_agg[d_key] = {"tips": 0, "sales": 0, "tipped_count": 0}
             daily_agg[d_key]["tips"] += conv_tip
@@ -2307,12 +2417,12 @@ async def get_tips_summary(
 
     # Daily grouped by currency
     daily_rows = db.query(
-        func.date(SalesTransaction.transaction_date).label("date"),
+        func.date(local_transaction_dt()).label("date"),
         SalesTransaction.amount_money_currency,
         func.sum(SalesTransaction.total_tip_amount).label("tips"),
         func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).filter(SalesTransaction.total_tip_amount > 0).label("tipped_count"),
-    ).filter(base).group_by(func.date(SalesTransaction.transaction_date), SalesTransaction.amount_money_currency).order_by(func.date(SalesTransaction.transaction_date)).all()
+    ).join(Location, SalesTransaction.location_id == Location.id).filter(base).group_by(func.date(local_transaction_dt()), SalesTransaction.amount_money_currency).order_by(func.date(local_transaction_dt())).all()
 
     for r in daily_rows:
         all_cur.add(r.amount_money_currency or "GBP")
@@ -2418,7 +2528,6 @@ from app.models.daily_sales_summary import DailySalesSummary
 from collections import defaultdict
 from app.services.exchange_rate_service import exchange_rate_service
 import uuid as uuid_lib
-from datetime import date as date_type
 from app.services.summary_service import rebuild_daily_summaries_for_locations
 
 
@@ -2445,8 +2554,8 @@ async def rebuild_daily_summaries(
 @router.get("/analytics/fast-summary", response_model=Dict[str, Any])
 async def get_fast_analytics(
     date_preset: Optional[str] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     days: int = Query(60, ge=1, le=3650),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
@@ -2463,22 +2572,21 @@ async def get_fast_analytics(
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    filtered = ctx["location_ids"]
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
-    if not ctx["location_ids"]:
+    if not filtered:
         return _empty_fast_summary()
 
     # Category mode: compute from transactions with product-level filtering
     if ctx["mode"] == "category":
         return await _fast_summary_category_mode(db, current_user, ctx, start, end)
 
-    filtered = ctx["location_ids"]
-
     # Query summary table — typically < 3000 rows even for a full year
     rows = db.query(DailySalesSummary).filter(
         DailySalesSummary.location_id.in_(filtered),
-        DailySalesSummary.date >= start.date() if isinstance(start, datetime) else start,
-        DailySalesSummary.date <= end.date() if isinstance(end, datetime) else end,
+        DailySalesSummary.date >= start,
+        DailySalesSummary.date <= end,
     ).all()
 
     if not rows:
@@ -2793,6 +2901,12 @@ async def _fast_summary_category_mode(
     rates_to_gbp, rates_live = exchange_rate_service.get_rates_to_gbp(db, current_user.organization_id, all_currencies or {"GBP"})
     rates_warning = None if rates_live else "Exchange rates unavailable - amounts shown without conversion"
 
+    # Build timezone lookup
+    loc_tz_map: Dict[str, str] = {}
+    if location_ids:
+        for (lid, ltz) in db.query(Location.id, Location.timezone).filter(Location.id.in_(location_ids)).all():
+            loc_tz_map[str(lid)] = ltz or "UTC"
+
     # Scan transactions, filter at line-item level
     total_sales = 0
     total_discounts = 0
@@ -2840,7 +2954,7 @@ async def _fast_summary_category_mode(
             item_gross = (item.get("gross_sales_money") or {}).get("amount", 0)
             converted_revenue = round(item_revenue * rate)
             total_items += quantity
-            item_hour = txn_date.hour if isinstance(txn_date, datetime) else 0
+            item_hour = utc_to_local(txn_date, loc_tz_map.get(str(loc_id), "UTC")).hour if isinstance(txn_date, datetime) else 0
             by_hour_agg[item_hour]["items"] += quantity
 
             # Products
@@ -2899,7 +3013,7 @@ async def _fast_summary_category_mode(
                     discount_currency_breakdown[currency]["converted_amount"] += converted_discount
 
                 # Daily
-                day_str = txn_date.date().isoformat() if isinstance(txn_date, datetime) else str(txn_date)
+                day_str = utc_to_local(txn_date, loc_tz_map.get(str(loc_id), "UTC")).date().isoformat() if isinstance(txn_date, datetime) else str(txn_date)
                 if day_str not in by_day:
                     by_day[day_str] = {"date": day_str, "total_sales": 0, "transaction_count": 0}
                 by_day[day_str]["total_sales"] += converted_order
@@ -2918,7 +3032,7 @@ async def _fast_summary_category_mode(
                 by_location[loc_str]["total_transactions"] += 1
 
                 # Hourly
-                txn_hour = txn_date.hour if isinstance(txn_date, datetime) else 0
+                txn_hour = utc_to_local(txn_date, loc_tz_map.get(str(loc_id), "UTC")).hour if isinstance(txn_date, datetime) else 0
                 by_hour_agg[txn_hour]["sales"] += converted_order
                 by_hour_agg[txn_hour]["transactions"] += 1
 
@@ -2933,8 +3047,7 @@ async def _fast_summary_category_mode(
             SalesTransaction.raw_data["returns"],
         ).filter(
             SalesTransaction.location_id.in_(matched_location_ids),
-            SalesTransaction.transaction_date >= start,
-            SalesTransaction.transaction_date <= end,
+            *_local_date_conditions(start, end),
             SalesTransaction.raw_data["returns"] != None,  # noqa: E711
         ).all()
     for (rcurrency, returns_json) in return_rows:
@@ -3124,8 +3237,8 @@ async def get_sales_by_artist(
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -3137,9 +3250,10 @@ async def get_sales_by_artist(
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
-    start, end = _resolve_date_range(date_preset, start_date, end_date, days)
+    filtered = ctx["location_ids"]
+    start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
 
-    if not ctx["location_ids"]:
+    if not filtered:
         return []
 
     # Build catalog_object_id → artist_name lookup
@@ -3162,7 +3276,7 @@ async def get_sales_by_artist(
     if not artist_lookup:
         return []
 
-    base = _base_sales_filter(ctx["location_ids"], start, end, completed_only=False)
+    base = _base_sales_filter(filtered, start, end, completed_only=False)
     cat_filter = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
 
     # Exchange rates

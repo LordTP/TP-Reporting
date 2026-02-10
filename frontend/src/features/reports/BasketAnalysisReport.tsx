@@ -22,11 +22,12 @@ export default function BasketAnalysisReport() {
   const filters = useReportFilters()
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['report-basket', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-basket', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<BasketData>(`/sales/analytics/basket?${params}`)
     },
+    enabled: filters.isDateRangeReady,
   })
 
   const currency = data?.currency || 'GBP'

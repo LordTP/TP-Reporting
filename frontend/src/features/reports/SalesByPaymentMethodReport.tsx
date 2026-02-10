@@ -21,7 +21,7 @@ export default function SalesByPaymentMethodReport() {
   const filters = useReportFilters()
 
   const { data: summaryData, isLoading, refetch } = useQuery({
-    queryKey: ['report-payment-methods', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-payment-methods', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => apiClient.get<{
       total_sales: number
       transaction_count: number
@@ -31,6 +31,7 @@ export default function SalesByPaymentMethodReport() {
       by_status: Record<string, number>
       by_currency?: CurrencyBreakdownItem[]
     }>(`/sales/summary?${filters.buildQueryParams()}`),
+    enabled: filters.isDateRangeReady,
   })
 
   const currency = summaryData?.currency || 'GBP'

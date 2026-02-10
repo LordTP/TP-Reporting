@@ -49,7 +49,7 @@ export default function SalesByCategoryReport() {
   const [variantPage, setVariantPage] = useState(0)
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['report-categories', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-categories', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<{
@@ -61,6 +61,7 @@ export default function SalesByCategoryReport() {
         by_currency?: CurrencyBreakdownItem[]
       }>(`/sales/products/categories?${params}`)
     },
+    enabled: filters.isDateRangeReady,
   })
 
   const sortItems = (items: CategoryItem[]) =>

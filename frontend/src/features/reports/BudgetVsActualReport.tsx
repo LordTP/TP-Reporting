@@ -42,11 +42,12 @@ export default function BudgetVsActualReport() {
   const filters = useReportFilters()
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['report-budget', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-budget', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildQueryParams()
       return apiClient.get<BudgetReport>(`/budgets/performance/report?${params}`)
     },
+    enabled: filters.isDateRangeReady,
   })
 
   const performances = data?.performances || []

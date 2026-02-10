@@ -11,6 +11,8 @@ import uuid as uuid_lib
 
 from app.models.sales_transaction import SalesTransaction
 from app.models.daily_sales_summary import DailySalesSummary
+from app.models.location import Location
+from app.utils.timezone_helpers import local_date_col, local_hour_col
 
 
 def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) -> int:
@@ -21,10 +23,10 @@ def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) 
     if not location_ids:
         return 0
 
-    tx_date_col = func.date(SalesTransaction.transaction_date).label("tx_date")
-    hour_col = func.extract("hour", SalesTransaction.transaction_date).label("tx_hour")
+    tx_date_col = local_date_col()
+    hour_col = local_hour_col()
 
-    # Step 1: Core metrics via SQL
+    # Step 1: Core metrics via SQL (timezone-aware via Location JOIN)
     core_rows = db.query(
         SalesTransaction.location_id,
         tx_date_col,
@@ -35,6 +37,8 @@ def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) 
         func.sum(SalesTransaction.total_tip_amount).label("total_tips"),
         func.sum(SalesTransaction.total_discount_amount).label("total_discounts"),
         func.min(SalesTransaction.amount_money_currency).label("currency"),
+    ).join(
+        Location, SalesTransaction.location_id == Location.id
     ).filter(
         SalesTransaction.location_id.in_(location_ids),
         SalesTransaction.payment_status == "COMPLETED",
@@ -67,6 +71,8 @@ def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) 
         tx_date_col,
         SalesTransaction.tender_type,
         func.sum(SalesTransaction.amount_money_amount).label("amount"),
+    ).join(
+        Location, SalesTransaction.location_id == Location.id
     ).filter(
         SalesTransaction.location_id.in_(location_ids),
         SalesTransaction.payment_status == "COMPLETED",
@@ -87,6 +93,8 @@ def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) 
         hour_col,
         func.sum(SalesTransaction.amount_money_amount).label("sales"),
         func.count(SalesTransaction.id).label("tx"),
+    ).join(
+        Location, SalesTransaction.location_id == Location.id
     ).filter(
         SalesTransaction.location_id.in_(location_ids),
         SalesTransaction.payment_status == "COMPLETED",
@@ -103,9 +111,11 @@ def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) 
     # Step 4: Line items scan (skip raw_data)
     line_rows = db.query(
         SalesTransaction.location_id,
-        func.date(SalesTransaction.transaction_date).label("tx_date"),
-        func.extract("hour", SalesTransaction.transaction_date).label("tx_hour"),
+        tx_date_col,
+        hour_col,
         SalesTransaction.line_items,
+    ).join(
+        Location, SalesTransaction.location_id == Location.id
     ).filter(
         SalesTransaction.location_id.in_(location_ids),
         SalesTransaction.payment_status == "COMPLETED",
@@ -143,8 +153,10 @@ def rebuild_daily_summaries_for_locations(db: Session, location_ids: List[str]) 
     # the customer actually got refunded.
     return_rows = db.query(
         SalesTransaction.location_id,
-        func.date(SalesTransaction.transaction_date).label("tx_date"),
+        tx_date_col,
         SalesTransaction.raw_data,
+    ).join(
+        Location, SalesTransaction.location_id == Location.id
     ).filter(
         SalesTransaction.location_id.in_(location_ids),
         text("jsonb_array_length(coalesce(raw_data->'returns', '[]'::jsonb)) > 0"),

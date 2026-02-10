@@ -2,7 +2,7 @@
 Sales Transaction Schemas
 """
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel, Field, field_serializer
 from uuid import UUID
 
@@ -73,8 +73,8 @@ class SalesAggregation(BaseModel):
     total_transactions: int
     average_transaction: int
     currency: str
-    start_date: datetime
-    end_date: datetime
+    start_date: date
+    end_date: date
     by_currency: Optional[List[Dict[str, Any]]] = None
     refunds_by_currency: Optional[List[Dict[str, Any]]] = None
     net_by_currency: Optional[List[Dict[str, Any]]] = None
@@ -102,8 +102,8 @@ class SalesSummary(BaseModel):
     transaction_count: int
     average_transaction: int
     currency: str
-    period_start: datetime
-    period_end: datetime
+    period_start: date
+    period_end: date
     by_tender_type: Dict[str, int]
     by_status: Dict[str, int]
     top_days: List[Dict[str, Any]]

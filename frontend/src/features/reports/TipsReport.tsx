@@ -31,11 +31,12 @@ export default function TipsReport() {
   const filters = useReportFilters()
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['report-tips', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-tips', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<TipsData>(`/sales/analytics/tips-summary?${params}`)
     },
+    enabled: filters.isDateRangeReady,
   })
 
   const currency = data?.currency || 'GBP'

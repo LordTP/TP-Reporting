@@ -29,7 +29,7 @@ export default function RefundReport() {
   const filters = useReportFilters()
 
   const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useQuery({
-    queryKey: ['report-refunds-summary', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-refunds-summary', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<{
@@ -40,10 +40,11 @@ export default function RefundReport() {
         by_currency?: CurrencyBreakdownItem[]
       }>(`/sales/analytics/refunds?${params}`)
     },
+    enabled: filters.isDateRangeReady,
   })
 
   const { data: dailyData, isLoading: dailyLoading } = useQuery({
-    queryKey: ['report-refunds-daily', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-refunds-daily', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<Array<{
@@ -55,14 +56,16 @@ export default function RefundReport() {
         refund_rate: number
       }>>(`/sales/analytics/refunds-daily?${params}`)
     },
+    enabled: filters.isDateRangeReady,
   })
 
   const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['report-refunded-products', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-refunded-products', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<RefundedProduct[]>(`/sales/analytics/refunded-products?${params}`)
     },
+    enabled: filters.isDateRangeReady,
   })
 
   const isLoading = summaryLoading || dailyLoading || productsLoading

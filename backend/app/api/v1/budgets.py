@@ -186,127 +186,6 @@ async def list_budgets(
     )
 
 
-@router.get("/{budget_id}", response_model=BudgetResponse)
-async def get_budget(
-    budget_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
-):
-    """
-    Get a specific budget by ID
-    """
-    budget = db.query(Budget).filter(Budget.id == uuid_lib.UUID(budget_id)).first()
-
-    if not budget:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Budget not found"
-        )
-
-    # Check user has access
-    accessible_locations = get_accessible_locations(db, current_user)
-    if str(budget.location_id) not in accessible_locations:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have access to this budget"
-        )
-
-    return BudgetResponse(
-        id=str(budget.id),
-        location_id=str(budget.location_id),
-        date=budget.date,
-        budget_amount=budget.budget_amount,
-        currency=budget.currency,
-        budget_type=budget.budget_type,
-        notes=budget.notes,
-        created_by=str(budget.created_by),
-        created_at=budget.created_at,
-        updated_at=budget.updated_at,
-    )
-
-
-@router.patch("/{budget_id}", response_model=BudgetResponse)
-async def update_budget(
-    budget_id: str,
-    budget_update: BudgetUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
-):
-    """
-    Update a budget
-    """
-    budget = db.query(Budget).filter(Budget.id == uuid_lib.UUID(budget_id)).first()
-
-    if not budget:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Budget not found"
-        )
-
-    # Check user has access
-    accessible_locations = get_accessible_locations(db, current_user)
-    if str(budget.location_id) not in accessible_locations:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have access to this budget"
-        )
-
-    # Update fields
-    if budget_update.budget_amount is not None:
-        budget.budget_amount = budget_update.budget_amount
-    if budget_update.budget_type is not None:
-        budget.budget_type = budget_update.budget_type
-    if budget_update.notes is not None:
-        budget.notes = budget_update.notes
-
-    db.commit()
-    db.refresh(budget)
-
-    return BudgetResponse(
-        id=str(budget.id),
-        location_id=str(budget.location_id),
-        date=budget.date,
-        budget_amount=budget.budget_amount,
-        currency=budget.currency,
-        budget_type=budget.budget_type,
-        notes=budget.notes,
-        created_by=str(budget.created_by),
-        created_at=budget.created_at,
-        updated_at=budget.updated_at,
-    )
-
-
-@router.delete("/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_budget(
-    budget_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
-):
-    """
-    Delete a budget
-    """
-    budget = db.query(Budget).filter(Budget.id == uuid_lib.UUID(budget_id)).first()
-
-    if not budget:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Budget not found"
-        )
-
-    # Check user has access
-    accessible_locations = get_accessible_locations(db, current_user)
-    if str(budget.location_id) not in accessible_locations:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have access to this budget"
-        )
-
-    db.delete(budget)
-    db.commit()
-
-    return None
-
-
 @router.post("/upload-csv", response_model=BudgetUploadResponse)
 async def upload_budget_csv(
     file: UploadFile = File(...),
@@ -543,8 +422,8 @@ async def get_budget_performance(
     current_user: User = Depends(require_role(["admin", "superadmin"])),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None, description="today, this_week, this_month, this_year"),
 ):
     """
@@ -555,12 +434,11 @@ async def get_budget_performance(
     if date_preset:
         from app.api.v1.sales import calculate_date_range_from_preset
         start_dt, end_dt = calculate_date_range_from_preset(date_preset)
-        start_date = start_dt
-        end_date = end_dt
-
-    # Convert datetime to date for budget comparisons
-    start_date_d: Optional[date] = start_date.date() if start_date else None
-    end_date_d: Optional[date] = end_date.date() if end_date else None
+        start_date_d = start_dt.date()
+        end_date_d = end_dt.date()
+    else:
+        start_date_d: Optional[date] = date.fromisoformat(start_date) if start_date else None
+        end_date_d: Optional[date] = date.fromisoformat(end_date) if end_date else None
 
     # Get accessible locations
     accessible_location_ids = get_accessible_locations(db, current_user)
@@ -728,3 +606,126 @@ async def get_budget_performance(
         performances=performances,
         summary=summary
     )
+
+
+# ── Catch-all routes with path parameters MUST come after specific routes ──
+
+@router.get("/{budget_id}", response_model=BudgetResponse)
+async def get_budget(
+    budget_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"])),
+):
+    """
+    Get a specific budget by ID
+    """
+    budget = db.query(Budget).filter(Budget.id == uuid_lib.UUID(budget_id)).first()
+
+    if not budget:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Budget not found"
+        )
+
+    # Check user has access
+    accessible_locations = get_accessible_locations(db, current_user)
+    if str(budget.location_id) not in accessible_locations:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this budget"
+        )
+
+    return BudgetResponse(
+        id=str(budget.id),
+        location_id=str(budget.location_id),
+        date=budget.date,
+        budget_amount=budget.budget_amount,
+        currency=budget.currency,
+        budget_type=budget.budget_type,
+        notes=budget.notes,
+        created_by=str(budget.created_by),
+        created_at=budget.created_at,
+        updated_at=budget.updated_at,
+    )
+
+
+@router.patch("/{budget_id}", response_model=BudgetResponse)
+async def update_budget(
+    budget_id: str,
+    budget_update: BudgetUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"])),
+):
+    """
+    Update a budget
+    """
+    budget = db.query(Budget).filter(Budget.id == uuid_lib.UUID(budget_id)).first()
+
+    if not budget:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Budget not found"
+        )
+
+    # Check user has access
+    accessible_locations = get_accessible_locations(db, current_user)
+    if str(budget.location_id) not in accessible_locations:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this budget"
+        )
+
+    # Update fields
+    if budget_update.budget_amount is not None:
+        budget.budget_amount = budget_update.budget_amount
+    if budget_update.budget_type is not None:
+        budget.budget_type = budget_update.budget_type
+    if budget_update.notes is not None:
+        budget.notes = budget_update.notes
+
+    db.commit()
+    db.refresh(budget)
+
+    return BudgetResponse(
+        id=str(budget.id),
+        location_id=str(budget.location_id),
+        date=budget.date,
+        budget_amount=budget.budget_amount,
+        currency=budget.currency,
+        budget_type=budget.budget_type,
+        notes=budget.notes,
+        created_by=str(budget.created_by),
+        created_at=budget.created_at,
+        updated_at=budget.updated_at,
+    )
+
+
+@router.delete("/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_budget(
+    budget_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"])),
+):
+    """
+    Delete a budget
+    """
+    budget = db.query(Budget).filter(Budget.id == uuid_lib.UUID(budget_id)).first()
+
+    if not budget:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Budget not found"
+        )
+
+    # Check user has access
+    accessible_locations = get_accessible_locations(db, current_user)
+    if str(budget.location_id) not in accessible_locations:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this budget"
+        )
+
+    db.delete(budget)
+    db.commit()
+
+    return None

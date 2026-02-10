@@ -42,7 +42,7 @@ export default function SalesByProductReport() {
   const [skuPage, setSkuPage] = useState(0)
 
   const { data: productsData, isLoading: productsLoading, refetch: refetchProducts } = useQuery({
-    queryKey: ['report-products', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-products', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<{
@@ -58,10 +58,11 @@ export default function SalesByProductReport() {
         total_unique_products: number
       }>(`/sales/products/top?${params}`)
     },
+    enabled: filters.isDateRangeReady,
   })
 
   const { data: categoryData, isLoading: categoryLoading } = useQuery({
-    queryKey: ['report-categories-for-sku', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-categories-for-sku', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<{
@@ -71,7 +72,7 @@ export default function SalesByProductReport() {
         by_currency?: CurrencyBreakdownItem[]
       }>(`/sales/products/categories?${params}`)
     },
-    enabled: viewMode === 'sku',
+    enabled: filters.isDateRangeReady && viewMode === 'sku',
   })
 
   const isLoading = productsLoading || (viewMode === 'sku' && categoryLoading)

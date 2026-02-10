@@ -18,7 +18,7 @@ export default function DailySalesSummaryReport() {
   const filters = useReportFilters()
 
   const { data: summaryData, isLoading, refetch } = useQuery({
-    queryKey: ['report-daily-summary', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-daily-summary', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => apiClient.get<{
       total_sales: number
       transaction_count: number
@@ -26,10 +26,11 @@ export default function DailySalesSummaryReport() {
       currency: string
       top_days: Array<{ date: string; total_sales: number; transaction_count: number; location_id?: string; location_name?: string }>
     }>(`/sales/summary?${filters.buildQueryParams()}`),
+    enabled: filters.isDateRangeReady,
   })
 
   const { data: aggregationData } = useQuery({
-    queryKey: ['report-daily-aggregation', filters.datePreset, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-daily-aggregation', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
     queryFn: () => apiClient.get<{
       total_sales: number
       total_transactions: number
@@ -37,6 +38,7 @@ export default function DailySalesSummaryReport() {
       currency: string
       by_currency?: CurrencyBreakdownItem[]
     }>(`/sales/aggregation?${filters.buildQueryParams()}`),
+    enabled: filters.isDateRangeReady,
   })
 
   const currency = aggregationData?.currency || 'GBP'

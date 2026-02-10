@@ -3,8 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/authStore'
 
-const SMART_PRESETS = ['today', 'yesterday', 'this_week', 'this_month', 'this_year'] as const
-
 export const PRESET_LABELS: Record<string, string> = {
   today: 'Today',
   yesterday: 'Yesterday',
@@ -18,6 +16,60 @@ export const PRESET_LABELS: Record<string, string> = {
   '180': 'Last 6 Months',
   '365': 'Last Year',
   custom: 'Custom Range',
+}
+
+/** Format a Date as YYYY-MM-DD using the browser's local timezone */
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Resolve any preset / numeric-days / custom range to concrete YYYY-MM-DD dates */
+function resolveDateRange(
+  preset: string,
+  customStart: string,
+  customEnd: string,
+): { start: string; end: string } | null {
+  const now = new Date()
+  const todayStr = toLocalDateStr(now)
+
+  switch (preset) {
+    case 'today':
+      return { start: todayStr, end: todayStr }
+    case 'yesterday': {
+      const y = new Date(now)
+      y.setDate(y.getDate() - 1)
+      const s = toLocalDateStr(y)
+      return { start: s, end: s }
+    }
+    case 'this_week': {
+      const dow = now.getDay() // 0=Sun
+      const mondayOffset = dow === 0 ? 6 : dow - 1
+      const monday = new Date(now)
+      monday.setDate(now.getDate() - mondayOffset)
+      return { start: toLocalDateStr(monday), end: todayStr }
+    }
+    case 'this_month': {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { start: toLocalDateStr(first), end: todayStr }
+    }
+    case 'this_year': {
+      const jan1 = new Date(now.getFullYear(), 0, 1)
+      return { start: toLocalDateStr(jan1), end: todayStr }
+    }
+    case 'custom': {
+      if (!customStart || !customEnd) return null
+      return { start: customStart, end: customEnd }
+    }
+    default: {
+      const days = parseInt(preset, 10)
+      if (!isNaN(days) && days > 0) {
+        const s = new Date(now)
+        s.setDate(now.getDate() - days)
+        return { start: toLocalDateStr(s), end: todayStr }
+      }
+      return null
+    }
+  }
 }
 
 export function useReportFilters() {
@@ -71,24 +123,10 @@ export function useReportFilters() {
     if (selectedClient !== 'all') params.append('client_id', selectedClient)
     if (selectedLocation !== 'all') params.append('location_ids', selectedLocation)
 
-    if (datePreset === 'custom') {
-      if (customStartDate) params.append('start_date', new Date(customStartDate).toISOString())
-      if (customEndDate) {
-        const end = new Date(customEndDate)
-        end.setHours(23, 59, 59, 999)
-        params.append('end_date', end.toISOString())
-      }
-    } else if ((SMART_PRESETS as readonly string[]).includes(datePreset)) {
-      params.append('date_preset', datePreset)
-    } else {
-      const days = parseInt(datePreset, 10)
-      if (!isNaN(days) && days > 0) {
-        const end = new Date()
-        const start = new Date()
-        start.setDate(start.getDate() - days)
-        params.append('start_date', start.toISOString())
-        params.append('end_date', end.toISOString())
-      }
+    const range = resolveDateRange(datePreset, customStartDate, customEndDate)
+    if (range) {
+      params.append('start_date', range.start)
+      params.append('end_date', range.end)
     }
     return params
   }
@@ -98,20 +136,10 @@ export function useReportFilters() {
     if (selectedClient !== 'all') params.append('client_id', selectedClient)
     if (selectedLocation !== 'all') params.append('location_ids', selectedLocation)
 
-    if (datePreset === 'custom') {
-      if (customStartDate) params.append('start_date', new Date(customStartDate).toISOString())
-      if (customEndDate) {
-        const end = new Date(customEndDate)
-        end.setHours(23, 59, 59, 999)
-        params.append('end_date', end.toISOString())
-      }
-    } else if ((SMART_PRESETS as readonly string[]).includes(datePreset)) {
-      params.append('date_preset', datePreset)
-    } else {
-      const days = parseInt(datePreset, 10)
-      if (!isNaN(days) && days > 0) {
-        params.append('days', String(days))
-      }
+    const range = resolveDateRange(datePreset, customStartDate, customEndDate)
+    if (range) {
+      params.append('start_date', range.start)
+      params.append('end_date', range.end)
     }
     return params
   }

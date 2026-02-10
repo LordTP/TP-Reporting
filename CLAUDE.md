@@ -83,7 +83,7 @@ All money in smallest currency unit (pence/cents) as BigInteger. Frontend divide
 | `Organization` | name, settings |
 | `User` | email, role (superadmin/admin/manager/viewer), organization_id |
 | `SquareAccount` | OAuth tokens (Fernet encrypted), merchant_id, is_active, last_sync_at |
-| `Location` | square_location_id, square_account_id, name, currency, is_active |
+| `Location` | square_location_id, square_account_id, name, currency, timezone, is_active |
 | `SalesTransaction` | square_transaction_id (unique), location_id, amounts, payment_status, line_items (JSONB), tender_type |
 | `DailySalesSummary` | location_id + date (unique), totals, by_tender_type/by_hour/top_products (JSONB) |
 | `Budget` | location_id, date, amount |
@@ -110,6 +110,23 @@ JWT access tokens (15 min) + refresh tokens (7 days, stored in DB). Roles: super
 1. **DB wipe:** Destructive command wiped managed Postgres. All data lost. This is why the safety rules exist.
 2. **ImportStatusEnum bug:** Manual sync crashed because wrong enum was imported. Auto-sync unaffected (skips import_id code path). Fixed.
 3. **Sync lookback gap:** Regular sync only looks back 24h. Broken sync > 24h = permanently missed transactions without historical import.
+
+---
+
+## Timezone-Aware Reporting
+
+All timestamps in `sales_transactions.transaction_date` are stored in UTC (from Square API). Reporting uses the `Location.timezone` field (e.g. `"Australia/Sydney"`, synced from Square) to convert to local time.
+
+**How it works:**
+- `backend/app/utils/timezone_helpers.py` — Centralized helpers:
+  - `local_transaction_dt()` — SQLAlchemy expression using PostgreSQL `AT TIME ZONE` + `COALESCE(timezone, 'UTC')`. Requires JOIN to `locations` table.
+  - `local_date_col()` / `local_hour_col()` — Extract local date/hour from transaction timestamp.
+  - `utc_to_local()` — Python-side conversion using `zoneinfo.ZoneInfo`.
+- `summary_service.py` — All 6 queries use `AT TIME ZONE` via Location JOIN. `DailySalesSummary.date` stores **location-local dates**.
+- `sales.py` — All SQL queries use `local_transaction_dt()` for date/hour grouping. All Python-side loops use `utc_to_local()` with a `loc_tz_map` dict. Date presets ("today", "this_week" etc.) resolve in the location's timezone via `_tz_for_locations()` helper (returns timezone when all filtered locations share one, else falls back to UTC).
+- NULL timezone locations fall back to UTC. DST handled by PostgreSQL's IANA timezone DB.
+
+**After code changes:** Must rebuild DailySalesSummary via `POST /api/v1/sales/summary/rebuild` to re-aggregate with correct local dates. The 15-min Celery sync automatically uses the fixed code for future data.
 
 ---
 
