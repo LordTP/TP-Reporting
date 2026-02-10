@@ -120,7 +120,7 @@ export default function BudgetVsActualReport() {
           format="currency"
           currency="GBP"
           icon={<DollarSign className="h-4 w-4" />}
-          description={filters.dateRangeLabel}
+          description="Excl. tax & refunds"
           accentColor="#f59e0b"
         />
         <KPICard

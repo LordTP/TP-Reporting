@@ -775,7 +775,7 @@ export default function AnalyticsPage() {
                             <tr className="border-b border-border bg-muted/50">
                               <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
                               <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Budget</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actual Sales</th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actual Sales (Net)</th>
                               <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Variance</th>
                               <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Attainment</th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>

@@ -477,11 +477,12 @@ async def get_budget_performance(
     budget_query = budget_query.group_by(Budget.location_id, Budget.date, Budget.currency)
     budgets_data = budget_query.all()
 
-    # Query actual sales from pre-aggregated daily summary (net = gross - refunds)
+    # Query actual sales from pre-aggregated daily summary (net = gross - tax - refunds)
     sales_query = db.query(
         DailySalesSummary.location_id,
         DailySalesSummary.date,
         DailySalesSummary.total_sales,
+        DailySalesSummary.total_tax,
         DailySalesSummary.total_refund_amount,
         DailySalesSummary.currency,
     ).filter(
@@ -495,11 +496,11 @@ async def get_budget_performance(
 
     sales_data = sales_query.all()
 
-    # Create lookup for sales by location and date (net sales = gross - refunds)
+    # Create lookup for sales by location and date (net sales = gross - tax - refunds)
     sales_lookup = {}
     for sale in sales_data:
         key = (str(sale.location_id), sale.date)
-        net_sales = (sale.total_sales or 0) - (sale.total_refund_amount or 0)
+        net_sales = (sale.total_sales or 0) - (sale.total_tax or 0) - (sale.total_refund_amount or 0)
         prev = sales_lookup.get(key)
         if prev:
             sales_lookup[key] = (prev[0] + net_sales, prev[1])
