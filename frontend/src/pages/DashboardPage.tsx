@@ -6,6 +6,8 @@ import { useState } from 'react'
 import ClientCategoryKeywords from '@/features/clients/ClientCategoryKeywords'
 import RolePermissionMatrix from '@/features/permissions/RolePermissionMatrix'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 
 export const DashboardPage = () => {
   const { user } = useAuthStore()
@@ -40,6 +42,7 @@ export const DashboardPage = () => {
   const [userForm, setUserForm] = useState({
     email: '', full_name: '', password: '', role: 'client', client_id: null as string | null, client_ids: [] as string[],
   })
+  const [deactivatingUser, setDeactivatingUser] = useState<any>(null)
 
   // Fetch real counts
   const { data: accountsData } = useQuery({
@@ -176,6 +179,14 @@ export const DashboardPage = () => {
 
   const deactivateUserMutation = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setDeactivatingUser(null)
+    },
+  })
+
+  const reactivateUserMutation = useMutation({
+    mutationFn: (id: string) => apiClient.put(`/users/${id}`, { is_active: true }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   })
 
@@ -251,6 +262,22 @@ export const DashboardPage = () => {
       queryClient.invalidateQueries({ queryKey: ['location-groups'] })
     },
   })
+
+  function timeAgo(dateStr: string | null | undefined): string {
+    if (!dateStr) return 'Never'
+    const now = Date.now()
+    const then = new Date(dateStr).getTime()
+    const seconds = Math.floor((now - then) / 1000)
+    if (seconds < 60) return 'Just now'
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    if (days < 30) return `${days}d ago`
+    const months = Math.floor(days / 30)
+    return `${months}mo ago`
+  }
 
   const ROLE_OPTIONS = [
     { value: 'superadmin', label: 'Super Admin' },
@@ -362,8 +389,18 @@ export const DashboardPage = () => {
           </div>
         </div>
 
-          {/* Client Management Section */}
-          {isAdmin && (
+        {isAdmin && (
+          <Tabs defaultValue="users" className="w-full">
+            <TabsList className="w-full justify-start h-12 bg-muted/50 p-1 rounded-lg mb-6">
+              <TabsTrigger value="users" className="px-5 py-2">Users</TabsTrigger>
+              <TabsTrigger value="clients" className="px-5 py-2">Clients</TabsTrigger>
+              <TabsTrigger value="rates" className="px-5 py-2">Exchange Rates</TabsTrigger>
+              <TabsTrigger value="groups" className="px-5 py-2">Location Groups</TabsTrigger>
+              <TabsTrigger value="permissions" className="px-5 py-2">Permissions</TabsTrigger>
+            </TabsList>
+
+          {/* Client Management */}
+          <TabsContent value="clients">
             <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
               <div className="flex justify-between items-center mb-6">
                 <div>
@@ -620,11 +657,11 @@ export const DashboardPage = () => {
                 </div>
               )}
             </div>
-          )}
+          </TabsContent>
 
-        {/* User Management Section */}
-        {isAdmin && (
-          <div className="mt-8 bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+          {/* User Management */}
+          <TabsContent value="users">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-foreground mb-1">User Management</h3>
@@ -657,13 +694,14 @@ export const DashboardPage = () => {
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Email</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Role</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Linked Client</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Last Login</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Status</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {usersData.users.map((u: any) => (
-                      <tr key={u.id} className="border-t border-border hover:bg-muted/20 transition-colors">
+                      <tr key={u.id} className={`border-t border-border transition-colors ${u.is_active ? 'hover:bg-muted/20' : 'opacity-50'}`}>
                         <td className="px-4 py-3 text-sm font-medium text-foreground">{u.full_name}</td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">{u.email}</td>
                         <td className="px-4 py-3 text-sm">
@@ -675,6 +713,9 @@ export const DashboardPage = () => {
                           {u.client_names && u.client_names.length > 0
                             ? u.client_names.join(', ')
                             : u.client_name || (u.client_id ? u.client_id : '—')}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground" title={u.last_login ? new Date(u.last_login).toLocaleString() : ''}>
+                          {timeAgo(u.last_login)}
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
@@ -703,14 +744,18 @@ export const DashboardPage = () => {
                             </button>
                             {u.is_active && u.id !== String(user?.id) && (
                               <button
-                                onClick={() => {
-                                  if (confirm(`Deactivate ${u.full_name}?`)) {
-                                    deactivateUserMutation.mutate(u.id)
-                                  }
-                                }}
+                                onClick={() => setDeactivatingUser(u)}
                                 className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
                               >
                                 Deactivate
+                              </button>
+                            )}
+                            {!u.is_active && (
+                              <button
+                                onClick={() => reactivateUserMutation.mutate(u.id)}
+                                className="px-3 py-1 text-xs bg-emerald-500 text-white rounded hover:bg-emerald-600"
+                              >
+                                Reactivate
                               </button>
                             )}
                           </div>
@@ -895,12 +940,39 @@ export const DashboardPage = () => {
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Exchange Rates Section */}
-        {isAdmin && (
-          <div className="mt-8 bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+            {/* Deactivate Confirmation Dialog */}
+            <Dialog open={!!deactivatingUser} onOpenChange={(open) => !open && setDeactivatingUser(null)}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Deactivate User</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to deactivate <span className="font-semibold text-foreground">{deactivatingUser?.full_name}</span>? They will no longer be able to log in.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <button
+                    onClick={() => setDeactivatingUser(null)}
+                    className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:opacity-80 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => deactivatingUser && deactivateUserMutation.mutate(deactivatingUser.id)}
+                    disabled={deactivateUserMutation.isPending}
+                    className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm disabled:opacity-50"
+                  >
+                    {deactivateUserMutation.isPending ? 'Deactivating...' : 'Deactivate'}
+                  </button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+          </TabsContent>
+
+          {/* Exchange Rates */}
+          <TabsContent value="rates">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-foreground mb-1">
@@ -1059,11 +1131,11 @@ export const DashboardPage = () => {
               </p>
             )}
           </div>
-        )}
+          </TabsContent>
 
-        {/* Location Groups Section */}
-        {isAdmin && (
-          <div className="mt-8 bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+          {/* Location Groups */}
+          <TabsContent value="groups">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-foreground mb-1">
@@ -1227,13 +1299,16 @@ export const DashboardPage = () => {
               </p>
             )}
           </div>
-        )}
+          </TabsContent>
 
-        {/* Role Permissions Section */}
-        {isAdmin && (
-          <div className="mt-8 bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+          {/* Role Permissions */}
+          <TabsContent value="permissions">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
             <RolePermissionMatrix />
           </div>
+          </TabsContent>
+
+          </Tabs>
         )}
       </main>
     </div>
