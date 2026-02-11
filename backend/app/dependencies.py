@@ -9,6 +9,7 @@ from typing import Optional, List, Callable
 from app.database import get_db
 from app.services.auth_service import decode_access_token
 from app.models.user import User
+from app.models.role_permission import RolePermission
 
 security = HTTPBearer()
 
@@ -102,3 +103,37 @@ def require_role(allowed_roles: List[str]) -> Callable:
         return current_user
 
     return role_checker
+
+
+def require_permission(*keys: str) -> Callable:
+    """
+    Dependency factory to require specific permission(s).
+    Admin/superadmin roles always bypass the check.
+
+    Usage:
+        current_user: User = Depends(require_permission("report:tax_report"))
+        or
+        @router.get("/", dependencies=[Depends(require_permission("page:sales"))])
+    """
+    async def permission_checker(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        if current_user.role in ("admin", "superadmin"):
+            return current_user
+
+        for key in keys:
+            perm = db.query(RolePermission).filter(
+                RolePermission.organization_id == current_user.organization_id,
+                RolePermission.role == current_user.role,
+                RolePermission.permission_key == key,
+                RolePermission.granted == True,
+            ).first()
+            if not perm:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Permission required: {key}",
+                )
+        return current_user
+
+    return permission_checker

@@ -12,7 +12,7 @@ import io
 import uuid as uuid_lib
 
 from app.database import get_db
-from app.dependencies import require_role
+from app.dependencies import require_permission
 from app.models.user import User
 from app.models.budget import Budget, BudgetType
 from app.models.location import Location
@@ -34,35 +34,40 @@ router = APIRouter(tags=["budgets"])
 
 
 def get_accessible_locations(db: Session, user: User) -> list[str]:
-    """Get list of location IDs user has access to"""
-    from app.models.client import Client
+    """Get list of location IDs user has access to, scoped by role and client assignment."""
+    from app.models.client import Client, user_clients, client_locations
 
-    if user.role in ["superadmin", "admin"]:
-        # Admins can access all locations
-        locations = db.query(Location.id).all()
+    if user.role in ("superadmin", "admin"):
+        locations = db.query(Location.id).join(SquareAccount).filter(
+            SquareAccount.organization_id == user.organization_id
+        ).all()
         return [str(loc.id) for loc in locations]
-    elif user.role == "manager":
-        # Managers can access assigned locations
-        # TODO: Implement location permissions when Phase 6 is done
-        locations = db.query(Location.id).all()
-        return [str(loc.id) for loc in locations]
-    else:  # client role
-        # Clients can only access locations assigned to them via client_locations
-        client = db.query(Client).filter(
-            Client.organization_id == user.organization_id,
-            Client.email == user.email
-        ).first()
 
-        if client:
-            return [str(loc.id) for loc in client.locations]
+    # Non-admin roles: scope to locations of assigned clients
+    assigned_client_ids = [
+        r[0] for r in db.query(user_clients.c.client_id).filter(
+            user_clients.c.user_id == user.id
+        ).all()
+    ]
+    if not assigned_client_ids and user.client_id:
+        assigned_client_ids = [user.client_id]
+
+    if not assigned_client_ids:
         return []
+
+    location_ids = [
+        str(r[0]) for r in db.query(client_locations.c.location_id).filter(
+            client_locations.c.client_id.in_(assigned_client_ids)
+        ).all()
+    ]
+    return location_ids
 
 
 @router.post("/", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
 async def create_budget(
     budget: BudgetCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("feature:manage_budgets")),
 ):
     """
     Create a new budget
@@ -121,7 +126,7 @@ async def create_budget(
 @router.get("/", response_model=BudgetListResponse)
 async def list_budgets(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("page:budgets")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
@@ -191,7 +196,7 @@ async def upload_budget_csv(
     file: UploadFile = File(...),
     currency: str = Query("GBP", description="Currency code"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("feature:manage_budgets")),
 ):
     """
     Upload budgets via CSV in grid format.
@@ -319,7 +324,7 @@ async def upload_budget_csv(
 @router.get("/coverage")
 async def get_budget_coverage(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("page:budgets")),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
 ):
@@ -400,7 +405,7 @@ async def get_budget_coverage(
 @router.get("/locations", response_model=list[dict])
 async def get_budget_locations(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("page:budgets")),
 ):
     """Get location names for the current user's org (for CSV template generation)."""
     org_account_ids = [
@@ -419,7 +424,7 @@ async def get_budget_locations(
 @router.get("/performance/report", response_model=BudgetPerformanceReport)
 async def get_budget_performance(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("report:budget_vs_actual")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     start_date: Optional[str] = Query(None),
@@ -615,7 +620,7 @@ async def get_budget_performance(
 async def get_budget(
     budget_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("page:budgets")),
 ):
     """
     Get a specific budget by ID
@@ -655,7 +660,7 @@ async def update_budget(
     budget_id: str,
     budget_update: BudgetUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("feature:manage_budgets")),
 ):
     """
     Update a budget
@@ -705,7 +710,7 @@ async def update_budget(
 async def delete_budget(
     budget_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"])),
+    current_user: User = Depends(require_permission("feature:manage_budgets")),
 ):
     """
     Delete a budget

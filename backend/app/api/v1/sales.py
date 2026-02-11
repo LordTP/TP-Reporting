@@ -58,7 +58,7 @@ def calculate_date_range_from_preset(
     return start_utc, end_utc
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_permission
 from app.models.user import User, UserRole
 from app.models.sales_transaction import SalesTransaction
 from app.models.location import Location
@@ -327,7 +327,7 @@ def _txn_matches_category(line_items_json, cat_ids: set) -> bool:
 @router.get("/transactions", response_model=SalesTransactionList)
 async def list_transactions(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("page:sales")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     start_date: Optional[str] = Query(None),
@@ -456,7 +456,7 @@ async def list_transactions(
 async def get_transaction(
     transaction_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("page:sales")),
 ):
     """Get detailed transaction information"""
     accessible_location_ids = get_accessible_locations(db, current_user)
@@ -513,7 +513,7 @@ async def get_transaction(
 @router.get("/aggregation", response_model=SalesAggregation)
 async def get_sales_aggregation(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("page:sales")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     start_date: Optional[str] = Query(None),
@@ -628,7 +628,7 @@ async def get_sales_aggregation(
 @router.get("/summary", response_model=SalesSummary)
 async def get_sales_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:daily_sales_summary")),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     start_date: Optional[str] = Query(None),
@@ -811,7 +811,7 @@ async def get_sales_summary(
 @router.get("/analytics/sales-by-location", response_model=Dict[str, Any])
 async def get_sales_by_location(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:sales_by_location")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
     start_date: Optional[str] = Query(None),
@@ -990,7 +990,7 @@ async def get_top_products(
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:sales_by_product")),
     db: Session = Depends(get_db),
 ):
     """
@@ -1094,7 +1094,7 @@ async def get_product_categories(
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:sales_by_category")),
     db: Session = Depends(get_db),
 ):
     """Get sales breakdown by product categories"""
@@ -1240,7 +1240,7 @@ async def get_basket_analytics(
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:basket_analysis")),
     db: Session = Depends(get_db),
 ):
     """Get basket/order analytics using SQL aggregation + minimal JSONB scan."""
@@ -1350,7 +1350,7 @@ async def get_hourly_sales(
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:hourly_sales_pattern")),
     db: Session = Depends(get_db),
 ):
     """Get hourly sales breakdown using SQL EXTRACT for performance."""
@@ -1477,7 +1477,7 @@ async def get_refunds_analytics(
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:refund_report")),
     db: Session = Depends(get_db),
 ):
     """Get refunds analytics using SQL aggregation."""
@@ -1636,7 +1636,7 @@ async def get_refunds_daily(
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:refund_report")),
     db: Session = Depends(get_db),
 ):
     """Get daily refund breakdown for the refund report."""
@@ -1787,7 +1787,7 @@ async def get_refunded_products(
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:refund_report")),
     db: Session = Depends(get_db),
 ):
     """Get individual refunded product line items for the refund report."""
@@ -1871,7 +1871,7 @@ async def get_tax_summary(
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:tax_report")),
     db: Session = Depends(get_db),
 ):
     """Get tax collected summary with daily and location breakdowns."""
@@ -2034,7 +2034,7 @@ async def get_discount_summary(
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:discount_report")),
     db: Session = Depends(get_db),
 ):
     """Get discount summary with daily and location breakdowns."""
@@ -2287,7 +2287,7 @@ async def get_tips_summary(
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:tips_report")),
     db: Session = Depends(get_db),
 ):
     """Get tips summary with daily, location, and payment method breakdowns."""
@@ -2559,7 +2559,7 @@ async def get_fast_analytics(
     days: int = Query(60, ge=1, le=3650),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("page:analytics")),
     db: Session = Depends(get_db),
 ):
     """
@@ -2837,7 +2837,7 @@ async def get_fast_analytics(
 @router.get("/exchange-rates", response_model=Dict[str, Any])
 async def get_exchange_rates(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("page:sales")),
 ):
     """Return current exchange rates to GBP for frontend use."""
     rates, has_rates = exchange_rate_service.get_gbp_based_rates(db, current_user.organization_id)
@@ -3239,7 +3239,7 @@ async def get_sales_by_artist(
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("report:sales_by_category")),
     db: Session = Depends(get_db),
 ):
     """

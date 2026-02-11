@@ -12,7 +12,7 @@ import base64
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user, require_role
+from app.dependencies import get_current_user, require_role, require_permission
 from app.models.user import User
 from app.models.square_account import SquareAccount
 from app.models.location import Location
@@ -152,7 +152,7 @@ async def oauth_callback(
 @router.get("/accounts", response_model=SquareAccountList)
 async def list_square_accounts(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("page:square_accounts")),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
 ):

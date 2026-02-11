@@ -226,12 +226,8 @@ export default function AnalyticsPage() {
     if (selectedLocation !== 'all') params.append('location_ids', selectedLocation)
 
     if (datePreset === 'custom') {
-      if (customStartDate) params.append('start_date', new Date(customStartDate).toISOString())
-      if (customEndDate) {
-        const end = new Date(customEndDate)
-        end.setHours(23, 59, 59, 999)
-        params.append('end_date', end.toISOString())
-      }
+      if (customStartDate) params.append('start_date', customStartDate)
+      if (customEndDate) params.append('end_date', customEndDate)
     } else if ((SMART_PRESETS as readonly string[]).includes(datePreset)) {
       params.append('date_preset', datePreset)
     } else {
@@ -241,8 +237,8 @@ export default function AnalyticsPage() {
         const end = new Date()
         const start = new Date()
         start.setDate(start.getDate() - days)
-        params.append('start_date', start.toISOString())
-        params.append('end_date', end.toISOString())
+        params.append('start_date', start.toISOString().split('T')[0])
+        params.append('end_date', end.toISOString().split('T')[0])
       }
     }
     return params

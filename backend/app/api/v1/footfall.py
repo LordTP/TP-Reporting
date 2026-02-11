@@ -9,7 +9,7 @@ from datetime import date, timedelta
 import uuid as uuid_lib
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_permission
 from app.models.user import User
 from app.models.footfall import FootfallEntry
 from app.models.location import Location
@@ -85,7 +85,7 @@ def _entry_to_response(entry: FootfallEntry, location_name: str = None, creator_
 @router.get("/", response_model=FootfallListResponse)
 async def list_footfall_entries(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("page:footfall")),
     location_id: Optional[str] = Query(None),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
@@ -226,7 +226,7 @@ async def delete_footfall_entry(
 @router.get("/coverage", response_model=Dict[str, Any])
 async def get_footfall_coverage(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("page:footfall")),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
 ):
