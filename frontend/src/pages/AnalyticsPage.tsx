@@ -278,7 +278,7 @@ export default function AnalyticsPage() {
     queryFn: () => apiClient.get<BudgetPerformanceReport>(
       `/budgets/performance/report?${buildQueryParams()}`
     ),
-    enabled: isDateRangeReady && isAdmin,
+    enabled: isDateRangeReady && (isAdmin || hasPermission('report:budget_vs_actual')),
   })
 
   // Location groups for aggregated view
@@ -681,7 +681,7 @@ export default function AnalyticsPage() {
             </div>
 
             {/* ═══════════════════ BUDGET PERFORMANCE ═══════════════════ */}
-            {isAdmin && hasBudgetData && (
+            {(isAdmin || hasPermission('report:budget_vs_actual')) && hasBudgetData && (
               <>
                 <SectionHeader title="Budget Performance" description={`Budget vs actual - ${dateRangeLabel}`} />
 
