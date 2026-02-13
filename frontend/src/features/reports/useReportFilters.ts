@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/authStore'
 
 export const PRESET_LABELS: Record<string, string> = {
   today: 'Today',
+  tomorrow: 'Tomorrow',
   yesterday: 'Yesterday',
   this_week: 'This Week',
   this_month: 'This Month',
@@ -35,6 +36,12 @@ function resolveDateRange(
   switch (preset) {
     case 'today':
       return { start: todayStr, end: todayStr }
+    case 'tomorrow': {
+      const t = new Date(now)
+      t.setDate(t.getDate() + 1)
+      const tStr = toLocalDateStr(t)
+      return { start: tStr, end: tStr }
+    }
     case 'yesterday': {
       const y = new Date(now)
       y.setDate(y.getDate() - 1)

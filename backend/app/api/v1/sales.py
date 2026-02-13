@@ -30,6 +30,10 @@ def calculate_date_range_from_preset(
     if date_preset == "today":
         start_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = now_local
+    elif date_preset == "tomorrow":
+        tomorrow = now_local + timedelta(days=1)
+        start_date = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = tomorrow.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_preset == "yesterday":
         yesterday = now_local - timedelta(days=1)
         start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)

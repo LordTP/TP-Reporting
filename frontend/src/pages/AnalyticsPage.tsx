@@ -76,10 +76,11 @@ interface BudgetPerformanceReport {
 
 // --- Helpers ---
 
-const SMART_PRESETS = ['today', 'yesterday', 'this_week', 'this_month', 'this_year'] as const
+const SMART_PRESETS = ['today', 'tomorrow', 'yesterday', 'this_week', 'this_month', 'this_year'] as const
 
 const PRESET_LABELS: Record<string, string> = {
   today: 'Today',
+  tomorrow: 'Tomorrow',
   yesterday: 'Yesterday',
   this_week: 'This Week',
   this_month: 'This Month',
@@ -472,6 +473,7 @@ export default function AnalyticsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="tomorrow">Tomorrow</SelectItem>
               <SelectItem value="yesterday">Yesterday</SelectItem>
               <SelectItem value="this_week">This Week</SelectItem>
               <SelectItem value="this_month">This Month</SelectItem>
