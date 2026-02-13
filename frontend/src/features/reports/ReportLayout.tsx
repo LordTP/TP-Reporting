@@ -21,8 +21,10 @@ export default function ReportLayout({ title, description, children, filters, on
     customEndDate, setCustomEndDate,
     selectedLocation, setSelectedLocation,
     selectedClient, setSelectedClient,
+    selectedClientGroup, setSelectedClientGroup,
     filteredLocations,
     clientsData,
+    clientGroupsData,
     isAdmin,
     isClientLocked,
   } = filters
@@ -104,8 +106,31 @@ export default function ReportLayout({ title, description, children, filters, on
 
           {isAdmin && !isClientLocked && (
             <>
+              {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
+                <Select value={selectedClientGroup} onValueChange={(value) => {
+                  setSelectedClientGroup(value)
+                  if (value !== 'all') {
+                    setSelectedClient('all')
+                  }
+                  setSelectedLocation('all')
+                }}>
+                  <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
+                    <SelectValue placeholder="All client groups" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All client groups</SelectItem>
+                    {clientGroupsData.client_groups.map((group: any) => (
+                      <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
               <Select value={selectedClient} onValueChange={(value) => {
                 setSelectedClient(value)
+                if (value !== 'all') {
+                  setSelectedClientGroup('all')
+                }
                 setSelectedLocation('all')
               }}>
                 <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">

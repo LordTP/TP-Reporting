@@ -21,7 +21,7 @@ export default function SalesByPaymentMethodReport() {
   const filters = useReportFilters()
 
   const { data: summaryData, isLoading, refetch } = useQuery({
-    queryKey: ['report-payment-methods', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-payment-methods', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => apiClient.get<{
       total_sales: number
       transaction_count: number

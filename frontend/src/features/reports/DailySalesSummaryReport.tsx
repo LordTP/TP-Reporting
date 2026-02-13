@@ -18,7 +18,7 @@ export default function DailySalesSummaryReport() {
   const filters = useReportFilters()
 
   const { data: summaryData, isLoading, refetch } = useQuery({
-    queryKey: ['report-daily-summary', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-daily-summary', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => apiClient.get<{
       total_sales: number
       transaction_count: number
@@ -30,7 +30,7 @@ export default function DailySalesSummaryReport() {
   })
 
   const { data: aggregationData } = useQuery({
-    queryKey: ['report-daily-aggregation', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-daily-aggregation', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => apiClient.get<{
       total_sales: number
       total_transactions: number

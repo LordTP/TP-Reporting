@@ -161,6 +161,7 @@ export default function AnalyticsPage() {
   const [selectedClient, setSelectedClient] = useState<string>(
     isClientRole ? (user?.client_id || 'all') : 'all'
   )
+  const [selectedClientGroup, setSelectedClientGroup] = useState<string>('all')
 
   // Don't fire queries until both custom dates are filled in
   const isDateRangeReady = datePreset !== 'custom' || (!!customStartDate && !!customEndDate)
@@ -204,6 +205,12 @@ export default function AnalyticsPage() {
     enabled: showClientFilter,
   })
 
+  const { data: clientGroupsData } = useQuery({
+    queryKey: ['client-groups'],
+    queryFn: () => apiClient.get<{ client_groups: Array<{ id: string; name: string; client_ids: string[] }> }>('/client-groups'),
+    enabled: showClientFilter,
+  })
+
   const { data: clientLocationsData } = useQuery({
     queryKey: ['client-locations', selectedClient],
     queryFn: async () => {
@@ -222,6 +229,7 @@ export default function AnalyticsPage() {
   /** Builds params with date_preset OR start_date/end_date for aggregation-style endpoints */
   const buildQueryParams = () => {
     const params = new URLSearchParams()
+    if (selectedClientGroup !== 'all') params.append('client_group_id', selectedClientGroup)
     if (selectedClient !== 'all') params.append('client_id', selectedClient)
     if (selectedLocation !== 'all') params.append('location_ids', selectedLocation)
 
@@ -247,7 +255,7 @@ export default function AnalyticsPage() {
   // --- Data Fetching (single fast endpoint instead of 8 separate calls) ---
 
   const { data: fastData, isLoading: aggregationLoading, refetch } = useQuery({
-    queryKey: ['fast-analytics', datePreset, customStartDate, customEndDate, selectedLocation, selectedClient],
+    queryKey: ['fast-analytics', datePreset, customStartDate, customEndDate, selectedLocation, selectedClient, selectedClientGroup],
     queryFn: () => apiClient.get<{
       aggregation: SalesAggregation
       summary: {
@@ -274,7 +282,7 @@ export default function AnalyticsPage() {
 
   // Budget performance data (admin only)
   const { data: budgetPerformanceData } = useQuery({
-    queryKey: ['budget-performance', datePreset, customStartDate, customEndDate, selectedLocation, selectedClient],
+    queryKey: ['budget-performance', datePreset, customStartDate, customEndDate, selectedLocation, selectedClient, selectedClientGroup],
     queryFn: () => apiClient.get<BudgetPerformanceReport>(
       `/budgets/performance/report?${buildQueryParams()}`
     ),
@@ -500,8 +508,31 @@ export default function AnalyticsPage() {
 
           {showClientFilter && (
             <>
+              {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
+                <Select value={selectedClientGroup} onValueChange={(value) => {
+                  setSelectedClientGroup(value)
+                  if (value !== 'all') {
+                    setSelectedClient('all')
+                  }
+                  setSelectedLocation('all')
+                }}>
+                  <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
+                    <SelectValue placeholder="All client groups" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All client groups</SelectItem>
+                    {clientGroupsData.client_groups.map((group: any) => (
+                      <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
               <Select value={selectedClient} onValueChange={(value) => {
                 setSelectedClient(value)
+                if (value !== 'all') {
+                  setSelectedClientGroup('all')
+                }
                 setSelectedLocation('all')
               }}>
                 <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">

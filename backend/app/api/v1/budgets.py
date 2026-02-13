@@ -427,6 +427,7 @@ async def get_budget_performance(
     current_user: User = Depends(require_permission("report:budget_vs_actual")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None, description="today, this_week, this_month, this_year"),
@@ -447,6 +448,19 @@ async def get_budget_performance(
 
     # Get accessible locations
     accessible_location_ids = get_accessible_locations(db, current_user)
+
+    # Resolve client group to client IDs
+    if client_group_id:
+        from app.api.v1.sales import _resolve_client_group
+        group_client_ids = _resolve_client_group(db, current_user, client_group_id)
+        if group_client_ids:
+            from app.models.client import client_locations as cl
+            multi_loc_rows = db.query(cl.c.location_id).filter(
+                cl.c.client_id.in_(group_client_ids)
+            ).all()
+            group_loc_ids = {str(r[0]) for r in multi_loc_rows}
+            accessible_location_ids = [lid for lid in accessible_location_ids if lid in group_loc_ids]
+            client_id = None  # group overrides individual client
 
     # Filter by client if specified
     if client_id:

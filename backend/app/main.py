@@ -15,7 +15,7 @@ from app.config import settings
 from app.database import engine, Base
 
 logger = logging.getLogger(__name__)
-from app.api.v1 import auth, users, organizations, square, locations, sales, dashboards, reports, permissions, budgets, clients, exchange_rates, location_groups, footfall
+from app.api.v1 import auth, users, organizations, square, locations, sales, dashboards, reports, permissions, budgets, clients, exchange_rates, location_groups, client_groups, footfall
 
 # Rate limiter instance (shared with route-level decorators)
 limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.RATE_LIMIT_PER_MINUTE}/minute"])
@@ -83,6 +83,7 @@ app.include_router(budgets.router, prefix="/api/v1/budgets", tags=["Budgets"])
 app.include_router(clients.router, prefix="/api/v1", tags=["Clients"])
 app.include_router(exchange_rates.router, prefix="/api/v1", tags=["Exchange Rates"])
 app.include_router(location_groups.router, prefix="/api/v1", tags=["Location Groups"])
+app.include_router(client_groups.router, prefix="/api/v1", tags=["Client Groups"])
 app.include_router(footfall.router, prefix="/api/v1/footfall", tags=["Footfall"])
 
 

@@ -27,7 +27,7 @@ export default function TaxReport() {
   const filters = useReportFilters()
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['report-tax', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-tax', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<TaxData>(`/sales/analytics/tax-summary?${params}`)

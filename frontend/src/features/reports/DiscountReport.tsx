@@ -39,7 +39,7 @@ export default function DiscountReport() {
   const filters = useReportFilters()
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['report-discounts', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-discounts', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<DiscountData>(`/sales/analytics/discount-summary?${params}`)

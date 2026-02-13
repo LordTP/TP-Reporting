@@ -24,6 +24,7 @@ class Organization(Base):
     dashboards = relationship("Dashboard", back_populates="organization", cascade="all, delete-orphan")
     clients = relationship("Client", back_populates="organization", cascade="all, delete-orphan")
     location_groups = relationship("LocationGroup", back_populates="organization", cascade="all, delete-orphan")
+    client_groups = relationship("ClientGroup", back_populates="organization", cascade="all, delete-orphan")
     # TODO: Uncomment when Phase 8 models are created
     # budget_uploads = relationship("BudgetUpload", back_populates="organization", cascade="all, delete-orphan")
 

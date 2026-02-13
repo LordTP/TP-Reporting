@@ -105,6 +105,7 @@ export default function SalesPage() {
   const [selectedClient, setSelectedClient] = useState<string>(
     isClientRole ? (user?.client_id || 'all') : 'all'
   )
+  const [selectedClientGroup, setSelectedClientGroup] = useState<string>('all')
 
   // Transaction detail modal state
   const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null)
@@ -113,6 +114,12 @@ export default function SalesPage() {
   const { data: clientsData } = useQuery({
     queryKey: ['clients'],
     queryFn: async () => apiClient.get('/clients'),
+    enabled: showClientFilter,
+  })
+
+  const { data: clientGroupsData } = useQuery({
+    queryKey: ['client-groups'],
+    queryFn: () => apiClient.get<{ client_groups: Array<{ id: string; name: string; client_ids: string[] }> }>('/client-groups'),
     enabled: showClientFilter,
   })
 
@@ -165,7 +172,10 @@ export default function SalesPage() {
   // Build query params
   const buildQueryParams = () => {
     const params = new URLSearchParams()
-    // Allow both client and location filters to work together
+    // Allow both client group and individual client filters
+    if (selectedClientGroup !== 'all') {
+      params.append('client_group_id', selectedClientGroup)
+    }
     if (selectedClient !== 'all') {
       params.append('client_id', selectedClient)
     }
@@ -183,7 +193,7 @@ export default function SalesPage() {
 
   // Fetch recent transactions with filters
   const { data: transactionsData, isLoading: transactionsLoading, refetch: refetchTransactions } = useQuery({
-    queryKey: ['sales-transactions', datePreset, selectedLocation, selectedClient],
+    queryKey: ['sales-transactions', datePreset, selectedLocation, selectedClient, selectedClientGroup],
     queryFn: async () => {
       const params = buildQueryParams()
       return await apiClient.get<{ transactions: SalesTransaction[]; total: number }>(`/sales/transactions?page_size=50&sort_by=transaction_date&sort_order=desc&${params}`)
@@ -192,7 +202,7 @@ export default function SalesPage() {
 
   // Fetch aggregation with filters
   const { data: aggregationData, isLoading: aggregationLoading } = useQuery({
-    queryKey: ['sales-aggregation', datePreset, selectedLocation, selectedClient],
+    queryKey: ['sales-aggregation', datePreset, selectedLocation, selectedClient, selectedClientGroup],
     queryFn: async () => {
       const params = buildQueryParams()
       return await apiClient.get<SalesAggregation>(`/sales/aggregation?${params}`)
@@ -283,11 +293,35 @@ export default function SalesPage() {
             </div>
             {showClientFilter && (
               <>
+                {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-muted-foreground">Client Group</label>
+                    <Select value={selectedClientGroup} onValueChange={(value) => {
+                      setSelectedClientGroup(value)
+                      if (value !== 'all') {
+                        setSelectedClient('all')
+                      }
+                      setSelectedLocation('all')
+                    }}>
+                      <SelectTrigger className="w-full sm:w-[200px]">
+                        <SelectValue placeholder="All Client Groups" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Client Groups</SelectItem>
+                        {clientGroupsData.client_groups.map((group: any) => (
+                          <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-muted-foreground">Client</label>
                   <Select value={selectedClient} onValueChange={(value) => {
                     setSelectedClient(value)
-                    // Reset location filter when client changes
+                    if (value !== 'all') {
+                      setSelectedClientGroup('all')
+                    }
                     setSelectedLocation('all')
                   }}>
                     <SelectTrigger className="w-full sm:w-[200px]">

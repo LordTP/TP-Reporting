@@ -133,6 +133,26 @@ def _get_allowed_client_ids(user: User, db: Session) -> Optional[List[str]]:
     return None  # admin/superadmin: unrestricted
 
 
+def _resolve_client_group(db: Session, user: User, client_group_id: Optional[str]) -> Optional[List[str]]:
+    """Resolve a client_group_id to its member client IDs.
+    Returns list of client IDs if group specified, None otherwise."""
+    if not client_group_id:
+        return None
+    import uuid as uuid_lib
+    from app.models.client_group import ClientGroup, client_group_members
+    group = db.query(ClientGroup).filter(
+        ClientGroup.id == uuid_lib.UUID(client_group_id),
+        ClientGroup.organization_id == user.organization_id,
+        ClientGroup.is_active == True,  # noqa: E712
+    ).first()
+    if not group:
+        return None
+    rows = db.query(client_group_members.c.client_id).filter(
+        client_group_members.c.client_group_id == group.id
+    ).all()
+    return [str(r[0]) for r in rows] if rows else []
+
+
 def get_accessible_locations(db: Session, user: User) -> List[str]:
     """
     Get list of location IDs accessible by the user based on their role.
@@ -330,6 +350,7 @@ async def list_transactions(
     current_user: User = Depends(require_permission("page:sales")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
@@ -348,6 +369,10 @@ async def list_transactions(
     accessible_location_ids = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible_location_ids, client_id, location_ids, allowed)
     filtered_location_ids = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -516,6 +541,7 @@ async def get_sales_aggregation(
     current_user: User = Depends(require_permission("page:sales")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
@@ -526,6 +552,10 @@ async def get_sales_aggregation(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -631,6 +661,7 @@ async def get_sales_summary(
     current_user: User = Depends(require_permission("report:daily_sales_summary")),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
@@ -640,6 +671,10 @@ async def get_sales_summary(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -814,6 +849,7 @@ async def get_sales_by_location(
     current_user: User = Depends(require_permission("report:sales_by_location")),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     date_preset: Optional[str] = Query(None),
@@ -826,6 +862,10 @@ async def get_sales_by_location(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     start, end = _resolve_date_range(date_preset, start_date, end_date, timezone_str=_tz_for_locations(db, filtered))
@@ -987,6 +1027,7 @@ async def get_top_products(
     limit: int = Query(10000, ge=1, le=10000, description="Number of top products to return"),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
@@ -1000,6 +1041,10 @@ async def get_top_products(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
@@ -1091,6 +1136,7 @@ async def get_product_categories(
     days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
@@ -1101,6 +1147,10 @@ async def get_product_categories(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
@@ -1237,6 +1287,7 @@ async def get_basket_analytics(
     days: int = Query(60, ge=1, le=365, description="Number of days to look back"),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
@@ -1247,6 +1298,10 @@ async def get_basket_analytics(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -1347,6 +1402,7 @@ async def get_hourly_sales(
     days: int = Query(60, ge=1, le=365, description="Number of days to look back"),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
@@ -1357,6 +1413,10 @@ async def get_hourly_sales(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -1474,6 +1534,7 @@ async def get_refunds_analytics(
     days: int = Query(60, ge=1, le=365, description="Number of days to look back"),
     location_ids: Optional[str] = Query(None, description="Comma-separated location IDs"),
     client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None, description="Date preset: today, this_week, this_month, this_year"),
     start_date: Optional[str] = Query(None, description="Custom start date"),
     end_date: Optional[str] = Query(None, description="Custom end date"),
@@ -1484,6 +1545,10 @@ async def get_refunds_analytics(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -1633,6 +1698,7 @@ async def get_refunds_daily(
     days: int = Query(60, ge=1, le=365),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
@@ -1643,6 +1709,10 @@ async def get_refunds_daily(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -1784,6 +1854,7 @@ async def get_refunded_products(
     days: int = Query(60, ge=1, le=365),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
@@ -1794,6 +1865,10 @@ async def get_refunded_products(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
@@ -1868,6 +1943,7 @@ async def get_tax_summary(
     days: int = Query(60, ge=1, le=365),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
@@ -1878,6 +1954,10 @@ async def get_tax_summary(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -2031,6 +2111,7 @@ async def get_discount_summary(
     days: int = Query(60, ge=1, le=365),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
@@ -2041,6 +2122,10 @@ async def get_discount_summary(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -2284,6 +2369,7 @@ async def get_tips_summary(
     days: int = Query(60, ge=1, le=365),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
@@ -2294,6 +2380,10 @@ async def get_tips_summary(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     cat_ids = ctx["catalog_object_ids"] if ctx["mode"] == "category" else None
@@ -2559,6 +2649,7 @@ async def get_fast_analytics(
     days: int = Query(60, ge=1, le=3650),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     current_user: User = Depends(require_permission("page:analytics")),
     db: Session = Depends(get_db),
 ):
@@ -2571,6 +2662,10 @@ async def get_fast_analytics(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))
@@ -3236,6 +3331,7 @@ async def get_sales_by_artist(
     days: int = Query(60, ge=1, le=3650),
     location_ids: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    client_group_id: Optional[str] = Query(None, description="Filter by client group"),
     date_preset: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
@@ -3249,6 +3345,10 @@ async def get_sales_by_artist(
     accessible = get_accessible_locations(db, current_user)
     client_id = _effective_client_id(current_user, client_id, db)
     allowed = _get_allowed_client_ids(current_user, db)
+    group_ids = _resolve_client_group(db, current_user, client_group_id)
+    if group_ids is not None:
+        client_id = None
+        allowed = group_ids
     ctx = _get_client_filter_context(db, accessible, client_id, location_ids, allowed)
     filtered = ctx["location_ids"]
     start, end = _resolve_date_range(date_preset, start_date, end_date, days, timezone_str=_tz_for_locations(db, filtered))

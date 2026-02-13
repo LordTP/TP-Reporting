@@ -84,6 +84,7 @@ export function useReportFilters() {
   const [selectedClient, setSelectedClient] = useState<string>(
     user?.client_id || 'all'
   )
+  const [selectedClientGroup, setSelectedClientGroup] = useState<string>('all')
 
   const { data: allLocations } = useQuery({
     queryKey: ['all-locations'],
@@ -105,6 +106,12 @@ export function useReportFilters() {
     enabled: isAdmin,
   })
 
+  const { data: clientGroupsData } = useQuery({
+    queryKey: ['client-groups'],
+    queryFn: () => apiClient.get<{ client_groups: Array<{ id: string; name: string; client_ids: string[] }> }>('/client-groups'),
+    enabled: isAdmin,
+  })
+
   const { data: clientLocationsData } = useQuery({
     queryKey: ['client-locations', selectedClient],
     queryFn: async () => {
@@ -120,6 +127,7 @@ export function useReportFilters() {
 
   const buildQueryParams = () => {
     const params = new URLSearchParams()
+    if (selectedClientGroup !== 'all') params.append('client_group_id', selectedClientGroup)
     if (selectedClient !== 'all') params.append('client_id', selectedClient)
     if (selectedLocation !== 'all') params.append('location_ids', selectedLocation)
 
@@ -133,6 +141,7 @@ export function useReportFilters() {
 
   const buildDaysQueryParams = () => {
     const params = new URLSearchParams()
+    if (selectedClientGroup !== 'all') params.append('client_group_id', selectedClientGroup)
     if (selectedClient !== 'all') params.append('client_id', selectedClient)
     if (selectedLocation !== 'all') params.append('location_ids', selectedLocation)
 
@@ -159,8 +168,10 @@ export function useReportFilters() {
     customEndDate, setCustomEndDate,
     selectedLocation, setSelectedLocation,
     selectedClient, setSelectedClient,
+    selectedClientGroup, setSelectedClientGroup,
     filteredLocations,
     clientsData,
+    clientGroupsData,
     isAdmin,
     isClientLocked,
     isDateRangeReady,

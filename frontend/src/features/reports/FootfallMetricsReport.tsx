@@ -108,7 +108,7 @@ export default function FootfallMetricsReport() {
 
   // Fetch sales by location from fast-summary (uses DailySalesSummary, not raw transactions)
   const { data: summaryData, isLoading: salesLoading, refetch: refetchSales } = useQuery({
-    queryKey: ['report-footfall-sales', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-footfall-sales', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () =>
       apiClient.get<{ sales_by_location: Array<{ location_id: string; location_name: string; total_sales: number; converted_total_sales: number; total_transactions: number; currency: string }> }>(
         `/sales/analytics/fast-summary?${filters.buildQueryParams()}`

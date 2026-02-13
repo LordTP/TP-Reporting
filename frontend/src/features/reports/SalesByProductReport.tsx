@@ -42,7 +42,7 @@ export default function SalesByProductReport() {
   const [skuPage, setSkuPage] = useState(0)
 
   const { data: productsData, isLoading: productsLoading, refetch: refetchProducts } = useQuery({
-    queryKey: ['report-products', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-products', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<{
@@ -62,7 +62,7 @@ export default function SalesByProductReport() {
   })
 
   const { data: categoryData, isLoading: categoryLoading } = useQuery({
-    queryKey: ['report-categories-for-sku', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-categories-for-sku', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<{

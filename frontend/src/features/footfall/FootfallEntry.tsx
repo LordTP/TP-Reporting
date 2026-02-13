@@ -4,7 +4,8 @@ import { apiClient } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, TrendingUp } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useAuthStore } from '@/store/authStore'
 import { usePermissionStore } from '@/store/permissionStore'
 import FootfallCalendar from './components/FootfallCalendar'
@@ -203,6 +204,89 @@ export default function FootfallEntry() {
           </span>
         )}
       </div>
+
+      {/* Trend Chart */}
+      {entriesData && entriesData.entries.length > 0 && (() => {
+        // Aggregate by date
+        const byDate = new Map<string, number>()
+        for (const e of entriesData.entries) {
+          byDate.set(e.date, (byDate.get(e.date) || 0) + e.count)
+        }
+        // Fill all days in the month
+        const start = new Date(monthRange.start_date + 'T00:00:00')
+        const end = new Date(monthRange.end_date + 'T00:00:00')
+        const chartData: Array<{ date: string; label: string; count: number }> = []
+        const today = new Date().toISOString().split('T')[0]
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const iso = d.toISOString().split('T')[0]
+          if (iso > today) break
+          chartData.push({
+            date: iso,
+            label: d.getDate().toString(),
+            count: byDate.get(iso) || 0,
+          })
+        }
+        const total = chartData.reduce((s, d) => s + d.count, 0)
+        const daysWithData = chartData.filter(d => d.count > 0).length
+        const avg = daysWithData > 0 ? Math.round(total / daysWithData) : 0
+
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  <CardTitle className="text-base font-semibold">Daily Footfall Trend</CardTitle>
+                </div>
+                <div className="flex gap-4 text-sm text-muted-foreground">
+                  <span>Total: <strong className="text-foreground">{total.toLocaleString()}</strong></span>
+                  <span>Avg: <strong className="text-foreground">{avg.toLocaleString()}</strong>/day</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.[0]) return null
+                        const d = payload[0].payload
+                        const dateObj = new Date(d.date + 'T00:00:00')
+                        return (
+                          <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-sm">
+                            <p className="font-medium">{dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+                            <p className="text-muted-foreground">{d.count.toLocaleString()} visitors</p>
+                          </div>
+                        )
+                      }}
+                    />
+                    <Bar
+                      dataKey="count"
+                      fill="hsl(var(--primary))"
+                      radius={[3, 3, 0, 0]}
+                      maxBarSize={24}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Footfall Coverage — missing days */}
       {coverageData && coverageLocations.length > 0 && (

@@ -29,7 +29,7 @@ export default function RefundReport() {
   const filters = useReportFilters()
 
   const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useQuery({
-    queryKey: ['report-refunds-summary', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-refunds-summary', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<{
@@ -44,7 +44,7 @@ export default function RefundReport() {
   })
 
   const { data: dailyData, isLoading: dailyLoading } = useQuery({
-    queryKey: ['report-refunds-daily', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-refunds-daily', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<Array<{
@@ -60,7 +60,7 @@ export default function RefundReport() {
   })
 
   const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['report-refunded-products', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-refunded-products', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<RefundedProduct[]>(`/sales/analytics/refunded-products?${params}`)

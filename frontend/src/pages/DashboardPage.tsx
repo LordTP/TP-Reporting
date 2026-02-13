@@ -35,6 +35,12 @@ export const DashboardPage = () => {
   const [groupName, setGroupName] = useState('')
   const [selectedGroupLocations, setSelectedGroupLocations] = useState<string[]>([])
 
+  // Client group state
+  const [showClientGroupForm, setShowClientGroupForm] = useState(false)
+  const [editingClientGroup, setEditingClientGroup] = useState<any>(null)
+  const [clientGroupName, setClientGroupName] = useState('')
+  const [selectedGroupClients, setSelectedGroupClients] = useState<string[]>([])
+
   // User management state
   const [showUserForm, setShowUserForm] = useState(false)
   const [editingUser, setEditingUser] = useState<any>(null)
@@ -263,6 +269,44 @@ export const DashboardPage = () => {
     },
   })
 
+  // Client group queries & mutations
+  const { data: clientGroupsData, isLoading: clientGroupsLoading } = useQuery({
+    queryKey: ['client-groups'],
+    queryFn: () => apiClient.get('/client-groups'),
+    enabled: isAdmin,
+  })
+
+  const createClientGroupMutation = useMutation({
+    mutationFn: (data: { name: string; client_ids: string[] }) =>
+      apiClient.post('/client-groups', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-groups'] })
+      setShowClientGroupForm(false)
+      setEditingClientGroup(null)
+      setClientGroupName('')
+      setSelectedGroupClients([])
+    },
+  })
+
+  const updateClientGroupMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
+      apiClient.patch(`/client-groups/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-groups'] })
+      setShowClientGroupForm(false)
+      setEditingClientGroup(null)
+      setClientGroupName('')
+      setSelectedGroupClients([])
+    },
+  })
+
+  const deleteClientGroupMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/client-groups/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-groups'] })
+    },
+  })
+
   function timeAgo(dateStr: string | null | undefined): string {
     if (!dateStr) return 'Never'
     const now = Date.now()
@@ -396,6 +440,7 @@ export const DashboardPage = () => {
               <TabsTrigger value="clients" className="px-5 py-2">Clients</TabsTrigger>
               <TabsTrigger value="rates" className="px-5 py-2">Exchange Rates</TabsTrigger>
               <TabsTrigger value="groups" className="px-5 py-2">Location Groups</TabsTrigger>
+              <TabsTrigger value="client-groups" className="px-5 py-2">Client Groups</TabsTrigger>
               <TabsTrigger value="permissions" className="px-5 py-2">Permissions</TabsTrigger>
             </TabsList>
 
@@ -1296,6 +1341,171 @@ export const DashboardPage = () => {
             ) : (
               <p className="text-muted-foreground text-sm">
                 No location groups created. Group locations to see aggregated data in the Analytics page.
+              </p>
+            )}
+          </div>
+          </TabsContent>
+
+          {/* Client Groups */}
+          <TabsContent value="client-groups">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-foreground mb-1">
+                  Client Groups
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Group clients together for aggregated analytics views
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowClientGroupForm(true)
+                  setEditingClientGroup(null)
+                  setClientGroupName('')
+                  setSelectedGroupClients([])
+                }}
+                className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm font-medium shadow-md hover:shadow-lg transition-all"
+              >
+                + New Group
+              </button>
+            </div>
+
+            {/* Add/Edit Client Group Form */}
+            {showClientGroupForm && (
+              <div className="border border-border/50 rounded-xl p-6 mb-6 bg-gradient-to-br from-muted to-muted/50">
+                <h4 className="font-semibold text-foreground mb-3">
+                  {editingClientGroup ? 'Edit Client Group' : 'Create Client Group'}
+                </h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">
+                      Group Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={clientGroupName}
+                      onChange={(e) => setClientGroupName(e.target.value)}
+                      className="w-full max-w-md px-3 py-2 border border-border rounded bg-background text-foreground"
+                      placeholder="e.g. Music, Fashion"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">
+                      Clients
+                    </label>
+                    <div className="border border-border rounded-lg p-3 bg-background max-h-52 overflow-y-auto">
+                      {clientsData?.clients && clientsData.clients.length > 0 ? (
+                        clientsData.clients.map((client: any) => (
+                          <label key={client.id} className="flex items-center gap-2 py-1.5 px-2 hover:bg-muted/50 rounded cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedGroupClients.includes(client.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedGroupClients([...selectedGroupClients, client.id])
+                                } else {
+                                  setSelectedGroupClients(selectedGroupClients.filter(id => id !== client.id))
+                                }
+                              }}
+                              className="rounded border-border"
+                            />
+                            <span className="text-sm text-foreground">{client.name}</span>
+                          </label>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">No clients available</p>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {selectedGroupClients.length} client{selectedGroupClients.length !== 1 ? 's' : ''} selected
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => {
+                        if (editingClientGroup) {
+                          updateClientGroupMutation.mutate({
+                            id: editingClientGroup.id,
+                            data: { name: clientGroupName.trim(), client_ids: selectedGroupClients }
+                          })
+                        } else {
+                          createClientGroupMutation.mutate({
+                            name: clientGroupName.trim(),
+                            client_ids: selectedGroupClients
+                          })
+                        }
+                      }}
+                      disabled={!clientGroupName.trim() || selectedGroupClients.length === 0 || createClientGroupMutation.isPending || updateClientGroupMutation.isPending}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50 text-sm"
+                    >
+                      {editingClientGroup ? 'Update Group' : 'Create Group'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowClientGroupForm(false)
+                        setEditingClientGroup(null)
+                        setClientGroupName('')
+                        setSelectedGroupClients([])
+                      }}
+                      className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:opacity-80 text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Client Groups List */}
+            {clientGroupsLoading ? (
+              <p className="text-muted-foreground text-sm">Loading groups...</p>
+            ) : clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 ? (
+              <div className="space-y-3">
+                {clientGroupsData.client_groups.map((group: any) => (
+                  <div key={group.id} className="border border-border/50 rounded-lg p-4 bg-background/50 hover:bg-muted/20 transition-colors">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-medium text-foreground">{group.name}</h4>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {group.client_names && group.client_names.length > 0
+                            ? group.client_names.join(', ')
+                            : `${group.client_ids.length} client${group.client_ids.length !== 1 ? 's' : ''}`
+                          }
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingClientGroup(group)
+                            setClientGroupName(group.name)
+                            setSelectedGroupClients(group.client_ids)
+                            setShowClientGroupForm(true)
+                          }}
+                          className="px-3 py-1 text-xs bg-secondary text-secondary-foreground rounded hover:opacity-80"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete group "${group.name}"?`)) {
+                              deleteClientGroupMutation.mutate(group.id)
+                            }
+                          }}
+                          className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                No client groups created. Group clients to see aggregated data across multiple clients.
               </p>
             )}
           </div>

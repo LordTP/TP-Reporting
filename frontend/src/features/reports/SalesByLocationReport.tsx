@@ -19,7 +19,7 @@ export default function SalesByLocationReport() {
   const filters = useReportFilters()
 
   const { data: locationsData, isLoading, refetch } = useQuery({
-    queryKey: ['report-locations', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-locations', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => apiClient.get<{
       locations: Array<{
         location_id: string

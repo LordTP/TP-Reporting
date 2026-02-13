@@ -26,6 +26,7 @@ class Client(Base):
     organization = relationship("Organization", back_populates="clients")
     locations = relationship("Location", secondary="client_locations", back_populates="clients")
     users = relationship("User", back_populates="client")
+    client_groups = relationship("ClientGroup", secondary="client_group_members", back_populates="clients")
 
     def __repr__(self):
         return f"<Client {self.name}>"

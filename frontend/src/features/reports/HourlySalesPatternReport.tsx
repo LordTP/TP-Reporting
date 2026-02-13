@@ -25,7 +25,7 @@ export default function HourlySalesPatternReport() {
   const filters = useReportFilters()
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['report-hourly', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient],
+    queryKey: ['report-hourly', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
     queryFn: () => {
       const params = filters.buildDaysQueryParams()
       return apiClient.get<{
