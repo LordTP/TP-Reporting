@@ -1,7 +1,7 @@
 """Add client_groups and client_group_members tables
 
 Revision ID: c3d4e5f6a7b8
-Revises: b1c2d3e4f5a6
+Revises: f5a6b7c8d9e0
 Create Date: 2026-02-09
 """
 from alembic import op
@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 # revision identifiers
 revision = 'c3d4e5f6a7b8'
-down_revision = 'b1c2d3e4f5a6'
+down_revision = 'f5a6b7c8d9e0'
 branch_labels = None
 depends_on = None
 
