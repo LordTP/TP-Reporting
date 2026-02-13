@@ -897,7 +897,7 @@ export default function AnalyticsPage() {
                   description={`Average daily sales by hour - ${dateRangeLabel}`}
                   currency={currency}
                 />
-                {salesByClientData && salesByClientData.length > 1 && hasPermission('feature:view_sales_by_client') && (
+                {salesByClientData && (selectedClientGroup !== 'all' ? salesByClientData.length > 0 : salesByClientData.length > 1) && hasPermission('feature:view_sales_by_client') && (
                   <SalesByClientChart
                     data={salesByClientData}
                     title="Sales by Client"
