@@ -182,7 +182,7 @@ export default function SalesPage() {
     if (selectedLocation !== 'all') {
       params.append('location_ids', selectedLocation)
     }
-    const smartPresets = ['today', 'yesterday', 'this_week', 'this_month', 'this_year']
+    const smartPresets = ['today', 'tomorrow', 'yesterday', 'this_week', 'this_month', 'this_year']
     if (smartPresets.includes(datePreset)) {
       params.append('date_preset', datePreset)
     } else if (/^\d+$/.test(datePreset)) {
