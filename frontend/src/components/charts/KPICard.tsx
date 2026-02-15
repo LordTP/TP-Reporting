@@ -20,6 +20,7 @@ interface KPICardProps {
   currency?: string
   accentColor?: string
   annotation?: React.ReactNode
+  className?: string
 }
 
 export default function KPICard({
@@ -32,6 +33,7 @@ export default function KPICard({
   currency = 'GBP',
   accentColor,
   annotation,
+  className,
 }: KPICardProps) {
   const currencySymbol = currency === 'GBP' ? '£' : currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency
 
@@ -50,7 +52,7 @@ export default function KPICard({
   }
 
   return (
-    <Card className="group relative overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+    <Card className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5", className)}>
       {accentColor && (
         <div
           className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg"

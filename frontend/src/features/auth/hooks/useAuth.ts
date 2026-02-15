@@ -11,7 +11,7 @@ export const useAuth = () => {
     mutationFn: (credentials: LoginCredentials) => authApi.login(credentials),
     onSuccess: (data) => {
       setAuth(data.user, data.access_token, data.refresh_token)
-      navigate('/dashboard')
+      navigate('/analytics')
     },
     onError: (error: any) => {
       console.error('Login failed:', error)
@@ -22,7 +22,7 @@ export const useAuth = () => {
     mutationFn: (data: RegisterData) => authApi.register(data),
     onSuccess: (data) => {
       setAuth(data.user, data.access_token, data.refresh_token)
-      navigate('/dashboard')
+      navigate('/analytics')
     },
     onError: (error: any) => {
       console.error('Registration failed:', error)

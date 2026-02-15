@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { RefreshCw, DollarSign, Calendar, Filter, CreditCard, Banknote, MapPin, ChevronRight, Tag, Percent, Receipt } from 'lucide-react'
+import { RefreshCw, DollarSign, Calendar, Filter, CreditCard, Banknote, MapPin, ChevronRight, ChevronDown, ChevronUp, Tag, Percent, Receipt } from 'lucide-react'
 
 interface SalesTransaction {
   id: string
@@ -106,6 +106,14 @@ export default function SalesPage() {
     isClientRole ? (user?.client_id || 'all') : 'all'
   )
   const [selectedClientGroup, setSelectedClientGroup] = useState<string>('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+
+  const activeFilterCount = [
+    datePreset !== 'today',
+    selectedLocation !== 'all',
+    selectedClient !== 'all' && selectedClient !== user?.client_id,
+    selectedClientGroup !== 'all',
+  ].filter(Boolean).length
 
   // Transaction detail modal state
   const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null)
@@ -259,112 +267,136 @@ export default function SalesPage() {
               View and analyze your sales data
             </p>
           </div>
-          <Button onClick={() => refetchTransactions()} variant="outline" className="shadow-md">
+          <Button onClick={() => refetchTransactions()} variant="outline" className="hidden md:inline-flex shadow-md">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-4 mb-8 p-4 sm:p-6 bg-card/80 backdrop-blur-sm rounded-xl border border-border/50 shadow-lg">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Filters:</span>
+        <div className="mb-8 bg-card/80 backdrop-blur-sm rounded-xl border border-border/50 shadow-lg">
+          {/* Mobile: collapsible toggle + refresh */}
+          <div className="md:hidden flex items-center justify-between p-4 sm:p-6">
+            <button
+              onClick={() => setFiltersOpen(!filtersOpen)}
+              className="flex items-center gap-2"
+            >
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">
+                  {activeFilterCount}
+                </span>
+              )}
+              {filtersOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </button>
+            <Button onClick={() => refetchTransactions()} variant="outline" size="sm">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
           </div>
-          <div className="flex-1 flex flex-wrap gap-3 sm:gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground">Date Range</label>
-              <Select value={datePreset} onValueChange={setDatePreset}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Select date range" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="tomorrow">Tomorrow</SelectItem>
-                  <SelectItem value="yesterday">Yesterday</SelectItem>
-                  <SelectItem value="this_week">This Week</SelectItem>
-                  <SelectItem value="this_month">This Month</SelectItem>
-                  <SelectItem value="this_year">This Year</SelectItem>
-                  <SelectItem value="7">Last 7 Days</SelectItem>
-                  <SelectItem value="30">Last 30 Days</SelectItem>
-                  <SelectItem value="60">Last 60 Days</SelectItem>
-                  <SelectItem value="90">Last 90 Days</SelectItem>
-                </SelectContent>
-              </Select>
+
+          {/* Filter controls: always visible on md+, toggled on mobile */}
+          <div className={`${filtersOpen ? 'flex' : 'hidden'} md:flex flex-wrap items-center gap-4 p-4 pt-0 md:pt-4 sm:p-6 sm:pt-0 md:pt-6`}>
+            <div className="hidden md:flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Filters:</span>
             </div>
-            {showClientFilter && (
-              <>
-                {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
+            <div className="flex-1 flex flex-wrap gap-3 sm:gap-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground">Date Range</label>
+                <Select value={datePreset} onValueChange={setDatePreset}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Select date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="tomorrow">Tomorrow</SelectItem>
+                    <SelectItem value="yesterday">Yesterday</SelectItem>
+                    <SelectItem value="this_week">This Week</SelectItem>
+                    <SelectItem value="this_month">This Month</SelectItem>
+                    <SelectItem value="this_year">This Year</SelectItem>
+                    <SelectItem value="7">Last 7 Days</SelectItem>
+                    <SelectItem value="30">Last 30 Days</SelectItem>
+                    <SelectItem value="60">Last 60 Days</SelectItem>
+                    <SelectItem value="90">Last 90 Days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {showClientFilter && (
+                <>
+                  {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Client Group</label>
+                      <Select value={selectedClientGroup} onValueChange={(value) => {
+                        setSelectedClientGroup(value)
+                        if (value !== 'all') {
+                          setSelectedClient('all')
+                        }
+                        setSelectedLocation('all')
+                      }}>
+                        <SelectTrigger className="w-full sm:w-[200px]">
+                          <SelectValue placeholder="All Client Groups" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Client Groups</SelectItem>
+                          {clientGroupsData.client_groups.map((group: any) => (
+                            <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs text-muted-foreground">Client Group</label>
-                    <Select value={selectedClientGroup} onValueChange={(value) => {
-                      setSelectedClientGroup(value)
+                    <label className="text-xs text-muted-foreground">Client</label>
+                    <Select value={selectedClient} onValueChange={(value) => {
+                      setSelectedClient(value)
                       if (value !== 'all') {
-                        setSelectedClient('all')
+                        setSelectedClientGroup('all')
                       }
                       setSelectedLocation('all')
                     }}>
                       <SelectTrigger className="w-full sm:w-[200px]">
-                        <SelectValue placeholder="All Client Groups" />
+                        <SelectValue placeholder="All Clients" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Client Groups</SelectItem>
-                        {clientGroupsData.client_groups.map((group: any) => (
-                          <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-muted-foreground">Client</label>
-                  <Select value={selectedClient} onValueChange={(value) => {
-                    setSelectedClient(value)
-                    if (value !== 'all') {
-                      setSelectedClientGroup('all')
-                    }
-                    setSelectedLocation('all')
-                  }}>
-                    <SelectTrigger className="w-full sm:w-[200px]">
-                      <SelectValue placeholder="All Clients" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Clients</SelectItem>
-                      {(clientsData?.clients || [])
-                        .filter((client: any) => isAdmin || !user?.client_ids || user.client_ids.includes(client.id))
-                        .map((client: any) => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {filteredLocations && filteredLocations.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-muted-foreground">Location</label>
-                    <Select
-                      value={selectedLocation}
-                      onValueChange={setSelectedLocation}
-                    >
-                      <SelectTrigger className="w-full sm:w-[200px]">
-                        <SelectValue placeholder="All Locations" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">
-                          {selectedClient !== 'all' ? 'All client locations' : 'All Locations'}
-                        </SelectItem>
-                        {filteredLocations.map((location: any) => (
-                          <SelectItem key={location.id} value={location.id}>
-                            {location.name}
+                        <SelectItem value="all">All Clients</SelectItem>
+                        {(clientsData?.clients || [])
+                          .filter((client: any) => isAdmin || !user?.client_ids || user.client_ids.includes(client.id))
+                          .map((client: any) => (
+                          <SelectItem key={client.id} value={client.id}>
+                            {client.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                )}
-              </>
-            )}
+                  {filteredLocations && filteredLocations.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Location</label>
+                      <Select
+                        value={selectedLocation}
+                        onValueChange={setSelectedLocation}
+                      >
+                        <SelectTrigger className="w-full sm:w-[200px]">
+                          <SelectValue placeholder="All Locations" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">
+                            {selectedClient !== 'all' ? 'All client locations' : 'All Locations'}
+                          </SelectItem>
+                          {filteredLocations.map((location: any) => (
+                            <SelectItem key={location.id} value={location.id}>
+                              {location.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
 
