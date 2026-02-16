@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom'
-import { BarChart3, TrendingUp, PieChart, ArrowRight, Target, MapPin, Clock, ShieldCheck, Zap, LineChart, Users } from 'lucide-react'
+import { BarChart3, TrendingUp, PieChart, ArrowRight, Target, MapPin, Clock, ShieldCheck, Zap, LineChart, Users, Globe } from 'lucide-react'
 import { useThemeStore } from '@/store/themeStore'
 import { Sun, Moon } from 'lucide-react'
 import { LoginPage } from '@/pages/LoginPage'
@@ -334,31 +334,31 @@ function Home() {
 
             {/* Quick highlights */}
             <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-8 max-w-md">
-              <div className="flex flex-col items-center text-center gap-1.5 bg-card border border-border rounded-lg px-2 py-2.5 sm:flex-row sm:text-left sm:gap-2.5 sm:px-3">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <BarChart3 className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-1.5 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2 sm:px-3 sm:py-2.5">
+                <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-md sm:rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-[11px] sm:text-xs font-semibold text-foreground leading-tight">Analytics</p>
-                  <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Real-time data</p>
+                  <p className="text-[10px] sm:text-xs font-semibold text-foreground leading-tight">Analytics</p>
+                  <p className="text-[8px] sm:text-[10px] text-muted-foreground leading-tight hidden sm:block">Real-time data</p>
                 </div>
               </div>
-              <div className="flex flex-col items-center text-center gap-1.5 bg-card border border-border rounded-lg px-2 py-2.5 sm:flex-row sm:text-left sm:gap-2.5 sm:px-3">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Target className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-1.5 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2 sm:px-3 sm:py-2.5">
+                <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-md sm:rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Target className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-[11px] sm:text-xs font-semibold text-foreground leading-tight">Budgets</p>
-                  <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Track targets</p>
+                  <p className="text-[10px] sm:text-xs font-semibold text-foreground leading-tight">Budgets</p>
+                  <p className="text-[8px] sm:text-[10px] text-muted-foreground leading-tight hidden sm:block">Track targets</p>
                 </div>
               </div>
-              <div className="flex flex-col items-center text-center gap-1.5 bg-card border border-border rounded-lg px-2 py-2.5 sm:flex-row sm:text-left sm:gap-2.5 sm:px-3">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-1.5 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2 sm:px-3 sm:py-2.5">
+                <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-md sm:rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-[11px] sm:text-xs font-semibold text-foreground leading-tight">Footfall</p>
-                  <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Conversion rates</p>
+                  <p className="text-[10px] sm:text-xs font-semibold text-foreground leading-tight">Footfall</p>
+                  <p className="text-[8px] sm:text-[10px] text-muted-foreground leading-tight hidden sm:block">Conversion rates</p>
                 </div>
               </div>
             </div>
@@ -376,8 +376,8 @@ function Home() {
             {/* Trust badges */}
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4" /> Secure &amp; encrypted</span>
-              <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> Auto-synced daily</span>
-              <span className="flex items-center gap-1.5">Any currency supported</span>
+              <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> Live sales data</span>
+              <span className="flex items-center gap-1.5"><Globe className="h-4 w-4" /> Any currency supported</span>
             </div>
           </div>
 
