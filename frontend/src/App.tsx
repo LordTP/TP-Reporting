@@ -334,31 +334,31 @@ function Home() {
 
             {/* Quick highlights */}
             <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-8 max-w-md">
-              <div className="flex items-center gap-1.5 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2 sm:px-3 sm:py-2.5">
-                <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-md sm:rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
+              <div className="flex items-center gap-2 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2.5 sm:px-3">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <BarChart3 className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-[10px] sm:text-xs font-semibold text-foreground leading-tight">Analytics</p>
-                  <p className="text-[8px] sm:text-[10px] text-muted-foreground leading-tight hidden sm:block">Real-time data</p>
+                  <p className="text-[11px] sm:text-xs font-semibold text-foreground leading-tight">Analytics</p>
+                  <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Real-time data</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2 sm:px-3 sm:py-2.5">
-                <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-md sm:rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Target className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
+              <div className="flex items-center gap-2 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2.5 sm:px-3">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Target className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-[10px] sm:text-xs font-semibold text-foreground leading-tight">Budgets</p>
-                  <p className="text-[8px] sm:text-[10px] text-muted-foreground leading-tight hidden sm:block">Track targets</p>
+                  <p className="text-[11px] sm:text-xs font-semibold text-foreground leading-tight">Budgets</p>
+                  <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Track targets</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2 sm:px-3 sm:py-2.5">
-                <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-md sm:rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
+              <div className="flex items-center gap-2 sm:gap-2.5 bg-card border border-border rounded-lg px-2 py-2.5 sm:px-3">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-[10px] sm:text-xs font-semibold text-foreground leading-tight">Footfall</p>
-                  <p className="text-[8px] sm:text-[10px] text-muted-foreground leading-tight hidden sm:block">Conversion rates</p>
+                  <p className="text-[11px] sm:text-xs font-semibold text-foreground leading-tight">Footfall</p>
+                  <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Conversion rates</p>
                 </div>
               </div>
             </div>
