@@ -2,7 +2,7 @@
  * Sales Page
  * View and analyze sales transactions
  */
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { Link } from 'react-router-dom'
@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { RefreshCw, DollarSign, Calendar, Filter, CreditCard, Banknote, MapPin, ChevronRight, ChevronDown, ChevronUp, Tag, Percent, Receipt } from 'lucide-react'
+import { RefreshCw, DollarSign, Calendar, Filter, CreditCard, Banknote, MapPin, ChevronRight, ChevronDown, ChevronUp, ChevronLeft, Tag, Percent, Receipt, Search, X } from 'lucide-react'
 
 interface SalesTransaction {
   id: string
@@ -115,6 +115,27 @@ export default function SalesPage() {
     selectedClientGroup !== 'all',
   ].filter(Boolean).length
 
+  // Search & pagination state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim())
+      setCurrentPage(1)
+    }, 500)
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
+  }, [searchQuery])
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [datePreset, selectedLocation, selectedClient, selectedClientGroup])
+
   // Transaction detail modal state
   const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null)
 
@@ -196,15 +217,18 @@ export default function SalesPage() {
     } else if (/^\d+$/.test(datePreset)) {
       params.append('days', datePreset)
     }
+    if (debouncedSearch) {
+      params.append('search', debouncedSearch)
+    }
     return params
   }
 
   // Fetch recent transactions with filters
   const { data: transactionsData, isLoading: transactionsLoading, refetch: refetchTransactions } = useQuery({
-    queryKey: ['sales-transactions', datePreset, selectedLocation, selectedClient, selectedClientGroup],
+    queryKey: ['sales-transactions', datePreset, selectedLocation, selectedClient, selectedClientGroup, debouncedSearch, currentPage],
     queryFn: async () => {
       const params = buildQueryParams()
-      return await apiClient.get<{ transactions: SalesTransaction[]; total: number }>(`/sales/transactions?page_size=50&sort_by=transaction_date&sort_order=desc&${params}`)
+      return await apiClient.get<{ transactions: SalesTransaction[]; total: number; page: number; page_size: number; total_pages: number }>(`/sales/transactions?page=${currentPage}&page_size=50&sort_by=transaction_date&sort_order=desc&${params}`)
     },
   })
 
@@ -226,6 +250,8 @@ export default function SalesPage() {
 
   const transactions = transactionsData?.transactions || []
   const totalCount = transactionsData?.total || 0
+  const totalPages = transactionsData?.total_pages || 1
+  const pageSize = transactionsData?.page_size || 50
   const aggregation = aggregationData
 
   const formatCurrency = (amount: number, currency: string) => {
@@ -463,10 +489,39 @@ export default function SalesPage() {
         {/* Transactions Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-            <CardDescription>
-              Showing the most recent {transactions.length} transactions — click a row for details
-            </CardDescription>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle>Transactions</CardTitle>
+                <CardDescription>
+                  {totalCount > 0
+                    ? `Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, totalCount)} of ${totalCount.toLocaleString()} transactions`
+                    : 'No transactions found'}
+                  {debouncedSearch && ` matching ••••${debouncedSearch}`}
+                </CardDescription>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 4)
+                    setSearchQuery(val)
+                  }}
+                  placeholder="Search last 4 digits..."
+                  className="w-full pl-9 pr-9 py-2 text-sm border border-input rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  inputMode="numeric"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => { setSearchQuery(''); setDebouncedSearch(''); setCurrentPage(1) }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {transactionsLoading ? (
@@ -486,6 +541,7 @@ export default function SalesPage() {
                 )}
               </div>
             ) : (
+              <>
               <div className="relative w-full overflow-auto">
                 <table className="w-full caption-bottom text-sm">
                   <thead className="[&_tr]:border-b">
@@ -555,6 +611,33 @@ export default function SalesPage() {
                   </tbody>
                 </table>
               </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t border-border mt-2">
+                  <p className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-input rounded-md hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-input rounded-md hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              </>
             )}
           </CardContent>
         </Card>

@@ -364,6 +364,7 @@ async def list_transactions(
     min_amount: Optional[int] = Query(None, description="Minimum amount in cents"),
     max_amount: Optional[int] = Query(None, description="Maximum amount in cents"),
     currency: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="Search by card last 4 digits"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     sort_by: str = Query("transaction_date", regex="^(transaction_date|amount_money_amount|total_money_amount)$"),
@@ -417,6 +418,10 @@ async def list_transactions(
         query = query.filter(SalesTransaction.amount_money_amount <= max_amount)
     if currency:
         query = query.filter(SalesTransaction.amount_money_currency == currency)
+    if search:
+        search = search.strip()
+        if search:
+            query = query.filter(SalesTransaction.last_4 == search)
 
     def _build_txn_data(txn):
         location_name = txn.location.name if txn.location else "Unknown"
