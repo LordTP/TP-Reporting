@@ -10,6 +10,7 @@ from app.models.user import User, UserRole
 from app.models.client import Client, user_clients
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserListResponse
 from app.services.auth_service import create_user
+from app.utils.security import hash_password
 
 router = APIRouter(tags=["users"])
 
@@ -292,11 +293,11 @@ async def delete_user(
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
-    """Deactivate a user (soft delete)."""
+    """Permanently delete a user."""
     if str(current_user.id) == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot deactivate yourself",
+            detail="Cannot delete yourself",
         )
 
     user = db.query(User).filter(
@@ -306,7 +307,54 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    user.is_active = False
+    email = user.email
+
+    # Nullify non-cascading FK references so the delete doesn't fail
+    from app.models.data_import import DataImport
+    from app.models.exchange_rate import ExchangeRate
+    from app.models.footfall import FootfallEntry
+    from app.models.budget import Budget
+    from app.models.role_permission import RolePermission
+    from app.models.dashboard import Dashboard
+
+    db.query(DataImport).filter(DataImport.initiated_by == user.id).update({"initiated_by": current_user.id})
+    db.query(ExchangeRate).filter(ExchangeRate.updated_by == user.id).update({"updated_by": current_user.id})
+    db.query(FootfallEntry).filter(FootfallEntry.created_by == user.id).update({"created_by": current_user.id})
+    db.query(FootfallEntry).filter(FootfallEntry.updated_by == user.id).update({"updated_by": None})
+    db.query(Budget).filter(Budget.created_by == user.id).update({"created_by": current_user.id})
+    db.query(RolePermission).filter(RolePermission.updated_by == user.id).update({"updated_by": None})
+    db.query(Dashboard).filter(Dashboard.created_by == user.id).update({"created_by": current_user.id})
+
+    # CASCADE handles user_clients and dashboard user_id
+    db.delete(user)
     db.commit()
 
-    return {"message": f"User {user.email} deactivated"}
+    return {"message": f"User {email} permanently deleted"}
+
+
+@router.post("/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: str,
+    data: dict,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Reset a user's password (admin only)."""
+    new_password = data.get("password", "").strip()
+    if len(new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters",
+        )
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.organization_id == current_user.organization_id,
+    ).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user.password_hash = hash_password(new_password)
+    db.commit()
+
+    return {"message": f"Password reset for {user.email}"}

@@ -41,6 +41,7 @@ export default function SalesByProductReport() {
   const [productPage, setProductPage] = useState(0)
   const [skuPage, setSkuPage] = useState(0)
   const [hiddenSizes, setHiddenSizes] = useState<Set<string>>(new Set())
+  const [showSizeCurve, setShowSizeCurve] = useState(false)
 
   const { data: productsData, isLoading: productsLoading, refetch: refetchProducts } = useQuery({
     queryKey: ['report-products', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
@@ -73,7 +74,7 @@ export default function SalesByProductReport() {
         by_currency?: CurrencyBreakdownItem[]
       }>(`/sales/products/categories?${params}`)
     },
-    enabled: filters.isDateRangeReady,
+    enabled: filters.isDateRangeReady && (viewMode === 'sku' || showSizeCurve),
   })
 
   const isLoading = productsLoading || (viewMode === 'sku' && categoryLoading)
@@ -247,7 +248,25 @@ export default function SalesByProductReport() {
       </div>
 
       {/* Size Curve */}
-      {sizeCurveData.length > 0 && (() => {
+      {!showSizeCurve ? (
+        <Card className="mb-6">
+          <CardContent className="py-6 flex flex-col items-center gap-2">
+            <p className="text-sm text-muted-foreground">Size curve analysis across all products</p>
+            <button
+              onClick={() => setShowSizeCurve(true)}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+            >
+              Load Size Curve
+            </button>
+          </CardContent>
+        </Card>
+      ) : categoryLoading ? (
+        <Card className="mb-6">
+          <CardContent className="py-8 flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">Loading size data...</p>
+          </CardContent>
+        </Card>
+      ) : sizeCurveData.length > 0 ? (() => {
         const visibleSizes = sizeCurveData.filter(s => !hiddenSizes.has(s.size))
         const maxQty = visibleSizes.reduce((max, s) => Math.max(max, s.quantity), 0)
         const totalQty = visibleSizes.reduce((sum, s) => sum + s.quantity, 0)
@@ -350,7 +369,7 @@ export default function SalesByProductReport() {
             </CardContent>
           </Card>
         )
-      })()}
+      })() : null}
 
       {/* View toggle */}
       <div className="flex gap-2 mb-4">

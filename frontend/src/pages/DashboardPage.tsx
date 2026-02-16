@@ -49,6 +49,10 @@ export const DashboardPage = () => {
     email: '', full_name: '', password: '', role: 'client', client_id: null as string | null, client_ids: [] as string[],
   })
   const [deactivatingUser, setDeactivatingUser] = useState<any>(null)
+  const [deletingUser, setDeletingUser] = useState<any>(null)
+  const [resetPasswordUser, setResetPasswordUser] = useState<any>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [resetPasswordError, setResetPasswordError] = useState('')
 
   // Fetch real counts
   const { data: accountsData } = useQuery({
@@ -194,6 +198,28 @@ export const DashboardPage = () => {
   const reactivateUserMutation = useMutation({
     mutationFn: (id: string) => apiClient.put(`/users/${id}`, { is_active: true }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  })
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setDeletingUser(null)
+    },
+  })
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      apiClient.post(`/users/${id}/reset-password`, { password }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setResetPasswordUser(null)
+      setNewPassword('')
+      setResetPasswordError('')
+    },
+    onError: (err: any) => {
+      setResetPasswordError(err?.response?.data?.detail || 'Failed to reset password')
+    },
   })
 
   // Exchange rate queries & mutations
@@ -787,6 +813,12 @@ export const DashboardPage = () => {
                             >
                               Edit
                             </button>
+                            <button
+                              onClick={() => { setResetPasswordUser(u); setNewPassword(''); setResetPasswordError('') }}
+                              className="px-3 py-1 text-xs bg-amber-500 text-white rounded hover:bg-amber-600"
+                            >
+                              Reset PW
+                            </button>
                             {u.is_active && u.id !== String(user?.id) && (
                               <button
                                 onClick={() => setDeactivatingUser(u)}
@@ -801,6 +833,14 @@ export const DashboardPage = () => {
                                 className="px-3 py-1 text-xs bg-emerald-500 text-white rounded hover:bg-emerald-600"
                               >
                                 Reactivate
+                              </button>
+                            )}
+                            {u.id !== String(user?.id) && (
+                              <button
+                                onClick={() => setDeletingUser(u)}
+                                className="px-3 py-1 text-xs bg-red-700 text-white rounded hover:bg-red-800"
+                              >
+                                Delete
                               </button>
                             )}
                           </div>
@@ -1008,6 +1048,70 @@ export const DashboardPage = () => {
                     className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm disabled:opacity-50"
                   >
                     {deactivateUserMutation.isPending ? 'Deactivating...' : 'Deactivate'}
+                  </button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={!!deletingUser} onOpenChange={(open) => !open && setDeletingUser(null)}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Delete User Permanently</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to permanently delete <span className="font-semibold text-foreground">{deletingUser?.full_name}</span> ({deletingUser?.email})? This cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <button
+                    onClick={() => setDeletingUser(null)}
+                    className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:opacity-80 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => deletingUser && deleteUserMutation.mutate(deletingUser.id)}
+                    disabled={deleteUserMutation.isPending}
+                    className="px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 text-sm disabled:opacity-50"
+                  >
+                    {deleteUserMutation.isPending ? 'Deleting...' : 'Delete Permanently'}
+                  </button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Reset Password Dialog */}
+            <Dialog open={!!resetPasswordUser} onOpenChange={(open) => { if (!open) { setResetPasswordUser(null); setNewPassword(''); setResetPasswordError('') } }}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Reset Password</DialogTitle>
+                  <DialogDescription>
+                    Set a new password for <span className="font-semibold text-foreground">{resetPasswordUser?.full_name}</span> ({resetPasswordUser?.email}).
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-2">
+                  <input
+                    type="text"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="New password (min 6 characters)"
+                    className="w-full px-3 py-2 text-sm border border-input rounded-md bg-background"
+                  />
+                  {resetPasswordError && <p className="text-xs text-red-500 mt-1">{resetPasswordError}</p>}
+                </div>
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <button
+                    onClick={() => { setResetPasswordUser(null); setNewPassword(''); setResetPasswordError('') }}
+                    className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:opacity-80 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => resetPasswordUser && newPassword.length >= 6 && resetPasswordMutation.mutate({ id: resetPasswordUser.id, password: newPassword })}
+                    disabled={resetPasswordMutation.isPending || newPassword.length < 6}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 text-sm disabled:opacity-50"
+                  >
+                    {resetPasswordMutation.isPending ? 'Resetting...' : 'Reset Password'}
                   </button>
                 </DialogFooter>
               </DialogContent>
