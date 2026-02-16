@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { useReportFilters } from './useReportFilters'
@@ -40,6 +40,7 @@ export default function SalesByProductReport() {
   const [skuSortAsc, setSkuSortAsc] = useState(false)
   const [productPage, setProductPage] = useState(0)
   const [skuPage, setSkuPage] = useState(0)
+  const [hiddenSizes, setHiddenSizes] = useState<Set<string>>(new Set())
 
   const { data: productsData, isLoading: productsLoading, refetch: refetchProducts } = useQuery({
     queryKey: ['report-products', filters.datePreset, filters.customStartDate, filters.customEndDate, filters.selectedLocation, filters.selectedClient, filters.selectedClientGroup],
@@ -72,7 +73,7 @@ export default function SalesByProductReport() {
         by_currency?: CurrencyBreakdownItem[]
       }>(`/sales/products/categories?${params}`)
     },
-    enabled: filters.isDateRangeReady && viewMode === 'sku',
+    enabled: filters.isDateRangeReady,
   })
 
   const isLoading = productsLoading || (viewMode === 'sku' && categoryLoading)
@@ -92,6 +93,22 @@ export default function SalesByProductReport() {
     if (typeof av === 'string' && typeof bv === 'string') return skuSortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
     return skuSortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number)
   })
+
+  // Size curve: aggregate variants by variation_name across all products
+  const sizeCurveData = useMemo(() => {
+    const allVariants = categoryData?.variants || []
+    if (allVariants.length === 0) return []
+    const bySize: Record<string, { quantity: number; revenue: number }> = {}
+    for (const v of allVariants) {
+      const size = v.variation_name || 'Standard'
+      if (!bySize[size]) bySize[size] = { quantity: 0, revenue: 0 }
+      bySize[size].quantity += v.quantity
+      bySize[size].revenue += v.revenue
+    }
+    return Object.entries(bySize)
+      .map(([size, data]) => ({ size, quantity: data.quantity, revenue: data.revenue }))
+      .sort((a, b) => b.quantity - a.quantity)
+  }, [categoryData?.variants])
 
   const totalRevenue = viewMode === 'product'
     ? products.reduce((sum, p) => sum + p.total_revenue, 0)
@@ -228,6 +245,112 @@ export default function SalesByProductReport() {
           accentColor="#10b981"
         />
       </div>
+
+      {/* Size Curve */}
+      {sizeCurveData.length > 0 && (() => {
+        const visibleSizes = sizeCurveData.filter(s => !hiddenSizes.has(s.size))
+        const maxQty = visibleSizes.reduce((max, s) => Math.max(max, s.quantity), 0)
+        const totalQty = visibleSizes.reduce((sum, s) => sum + s.quantity, 0)
+        const totalRev = visibleSizes.reduce((sum, s) => sum + s.revenue, 0)
+        return (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-semibold">Size Curve</CardTitle>
+                  <CardDescription>Units sold by size/variant across all products</CardDescription>
+                </div>
+                <div className="flex items-center gap-3">
+                  {hiddenSizes.size > 0 && (
+                    <button
+                      onClick={() => setHiddenSizes(new Set())}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Show all ({hiddenSizes.size} hidden)
+                    </button>
+                  )}
+                  <ExportButton onClick={() => {
+                    const rows = visibleSizes.map((row, i) => [
+                      i + 1,
+                      row.size,
+                      row.quantity,
+                      totalQty > 0 ? `${((row.quantity / totalQty) * 100).toFixed(1)}%` : '0%',
+                      penceToPounds(row.revenue),
+                    ] as (string | number)[])
+                    exportToExcel([{ name: 'Size Curve', headers: ['#', 'Size / Variant', 'Units', '% of Total', 'Revenue'], rows }], 'Size_Curve')
+                  }} />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-10">Show</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Size / Variant</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Units</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">% of Total</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Revenue</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-1/4 hidden sm:table-cell">Distribution</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {sizeCurveData.map((row) => {
+                      const isHidden = hiddenSizes.has(row.size)
+                      const pct = totalQty > 0 && !isHidden ? ((row.quantity / totalQty) * 100) : 0
+                      const barWidth = maxQty > 0 && !isHidden ? ((row.quantity / maxQty) * 100) : 0
+                      return (
+                        <tr key={row.size} className={`transition-colors ${isHidden ? 'opacity-40' : 'hover:bg-muted/30'}`}>
+                          <td className="px-4 py-2.5">
+                            <input
+                              type="checkbox"
+                              checked={!isHidden}
+                              onChange={() => {
+                                const next = new Set(hiddenSizes)
+                                if (isHidden) next.delete(row.size)
+                                else next.add(row.size)
+                                setHiddenSizes(next)
+                              }}
+                              className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5 text-sm font-medium text-foreground">{row.size}</td>
+                          <td className="px-4 py-2.5 text-sm text-right text-foreground tabular-nums">{row.quantity.toLocaleString()}</td>
+                          <td className="px-4 py-2.5 text-sm text-right text-muted-foreground tabular-nums">{isHidden ? '—' : `${pct.toFixed(1)}%`}</td>
+                          <td className="px-4 py-2.5 text-sm text-right font-semibold text-foreground tabular-nums">{formatCurrency(row.revenue, 'GBP')}</td>
+                          <td className="px-4 py-2.5 hidden sm:table-cell">
+                            {!isHidden && (
+                              <div className="w-full bg-muted/50 rounded-full h-2.5">
+                                <div
+                                  className="bg-primary h-2.5 rounded-full transition-all duration-300"
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-border bg-muted/40">
+                      <td className="px-4 py-2.5" />
+                      <td className="px-4 py-2.5 text-sm font-semibold text-foreground">
+                        Total {hiddenSizes.size > 0 ? `(${visibleSizes.length} of ${sizeCurveData.length})` : `(${sizeCurveData.length})`}
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-right font-semibold text-foreground tabular-nums">{totalQty.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-sm text-right text-muted-foreground">100%</td>
+                      <td className="px-4 py-2.5 text-sm text-right font-semibold text-primary tabular-nums">{formatCurrency(totalRev, 'GBP')}</td>
+                      <td className="hidden sm:table-cell" />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* View toggle */}
       <div className="flex gap-2 mb-4">
