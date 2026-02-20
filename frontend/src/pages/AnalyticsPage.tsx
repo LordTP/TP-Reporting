@@ -144,6 +144,93 @@ function CurrencyBreakdownAnnotation({ breakdown }: { breakdown?: CurrencyBreakd
   )
 }
 
+// --- Date Comparison Helpers ---
+
+function resolveCurrentDates(
+  preset: string,
+  customStart: string,
+  customEnd: string,
+): { start: string; end: string } | null {
+  const today = new Date()
+  const fmt = (d: Date) => d.toISOString().split('T')[0]
+
+  switch (preset) {
+    case 'today':
+      return { start: fmt(today), end: fmt(today) }
+    case 'tomorrow': {
+      const t = new Date(today); t.setDate(t.getDate() + 1)
+      return { start: fmt(t), end: fmt(t) }
+    }
+    case 'yesterday': {
+      const y = new Date(today); y.setDate(y.getDate() - 1)
+      return { start: fmt(y), end: fmt(y) }
+    }
+    case 'this_week': {
+      const day = today.getDay()
+      const mon = new Date(today); mon.setDate(mon.getDate() - ((day + 6) % 7))
+      return { start: fmt(mon), end: fmt(today) }
+    }
+    case 'this_month':
+      return { start: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), end: fmt(today) }
+    case 'this_year':
+      return { start: fmt(new Date(today.getFullYear(), 0, 1)), end: fmt(today) }
+    case 'custom':
+      return customStart && customEnd ? { start: customStart, end: customEnd } : null
+    default: {
+      const days = parseInt(preset, 10)
+      if (!isNaN(days) && days > 0) {
+        const s = new Date(today); s.setDate(s.getDate() - days)
+        return { start: fmt(s), end: fmt(today) }
+      }
+      return null
+    }
+  }
+}
+
+function getComparisonRange(
+  curStart: string, curEnd: string, mode: string,
+  custStart?: string, custEnd?: string,
+): { start: string; end: string } | null {
+  if (mode === 'none') return null
+  if (mode === 'custom') return custStart && custEnd ? { start: custStart, end: custEnd } : null
+
+  const s = new Date(curStart), e = new Date(curEnd)
+  const durationDays = Math.round((e.getTime() - s.getTime()) / 86400000)
+  const fmt = (d: Date) => d.toISOString().split('T')[0]
+
+  if (mode === 'previous_period') {
+    const ce = new Date(s); ce.setDate(ce.getDate() - 1)
+    const cs = new Date(ce); cs.setDate(cs.getDate() - durationDays)
+    return { start: fmt(cs), end: fmt(ce) }
+  }
+  if (mode === 'previous_year') {
+    const cs = new Date(s); cs.setFullYear(cs.getFullYear() - 1)
+    const ce = new Date(e); ce.setFullYear(ce.getFullYear() - 1)
+    return { start: fmt(cs), end: fmt(ce) }
+  }
+  return null
+}
+
+function computeTrend(
+  current: number, comparison: number, invertPositive = false,
+): { value: number; isPositive: boolean; label: string } | undefined {
+  if (comparison === 0 && current === 0) return undefined
+  if (comparison === 0) return { value: 100, isPositive: !invertPositive, label: 'vs prior' }
+  const pct = ((current - comparison) / Math.abs(comparison)) * 100
+  return {
+    value: Math.abs(Math.round(pct * 10) / 10),
+    isPositive: invertPositive ? pct < 0 : pct >= 0,
+    label: 'vs prior',
+  }
+}
+
+function formatCompLabel(start: string, end: string): string {
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
+  const s = new Date(start + 'T00:00:00'), e = new Date(end + 'T00:00:00')
+  if (start === end) return `vs ${s.toLocaleDateString('en-GB', opts)}`
+  return `vs ${s.toLocaleDateString('en-GB', opts)} – ${e.toLocaleDateString('en-GB', opts)}`
+}
+
 // --- Main Component ---
 
 export default function AnalyticsPage() {
@@ -165,12 +252,18 @@ export default function AnalyticsPage() {
   const [selectedClientGroup, setSelectedClientGroup] = useState<string>('all')
   const [filtersOpen, setFiltersOpen] = useState(false)
 
+  // Comparison state
+  const [compareMode, setCompareMode] = useState<string>('none')
+  const [compareStartDate, setCompareStartDate] = useState('')
+  const [compareEndDate, setCompareEndDate] = useState('')
+
   // Count active (non-default) filters for the mobile badge
   const activeFilterCount = [
     datePreset !== 'today',
     selectedLocation !== 'all',
     selectedClient !== 'all' && selectedClient !== user?.client_id,
     selectedClientGroup !== 'all',
+    compareMode !== 'none',
   ].filter(Boolean).length
 
   // Don't fire queries until both custom dates are filled in
@@ -289,6 +382,62 @@ export default function AnalyticsPage() {
     }>(`/sales/analytics/fast-summary?${buildQueryParams()}`),
     enabled: isDateRangeReady,
   })
+
+  // --- Comparison Period ---
+  const currentDates = resolveCurrentDates(datePreset, customStartDate, customEndDate)
+  const comparisonDates = currentDates && compareMode !== 'none'
+    ? getComparisonRange(currentDates.start, currentDates.end, compareMode, compareStartDate, compareEndDate)
+    : null
+
+  const { data: comparisonFastData } = useQuery({
+    queryKey: ['fast-analytics-comparison', compareMode, comparisonDates?.start, comparisonDates?.end, selectedLocation, selectedClient, selectedClientGroup],
+    queryFn: () => {
+      const params = new URLSearchParams()
+      if (selectedClientGroup !== 'all') params.append('client_group_id', selectedClientGroup)
+      if (selectedClient !== 'all') params.append('client_id', selectedClient)
+      if (selectedLocation !== 'all') params.append('location_ids', selectedLocation)
+      params.append('start_date', comparisonDates!.start)
+      params.append('end_date', comparisonDates!.end)
+      return apiClient.get<any>(`/sales/analytics/fast-summary?${params}`)
+    },
+    enabled: isDateRangeReady && !!comparisonDates,
+  })
+
+  // Compute comparison values with partial-day adjustment for "today"
+  const compValues = useMemo(() => {
+    if (!comparisonFastData) return null
+    const comp = comparisonFastData
+    const isPartialDay = datePreset === 'today'
+    const currentHour = new Date().getHours()
+
+    let totalSales = comp.aggregation?.total_sales || 0
+    let totalTransactions = comp.aggregation?.total_transactions || 0
+    let totalItems = comp.basket?.total_items || 0
+
+    if (isPartialDay && comp.hourly && currentHour > 0) {
+      totalSales = comp.hourly.filter((h: any) => h.hour < currentHour).reduce((s: number, h: any) => s + h.sales, 0)
+      totalTransactions = comp.hourly.filter((h: any) => h.hour < currentHour).reduce((s: number, h: any) => s + h.transactions, 0)
+      totalItems = comp.hourly.filter((h: any) => h.hour < currentHour).reduce((s: number, h: any) => s + h.items, 0)
+    }
+
+    const fullSales = comp.aggregation?.total_sales || 1
+    const ratio = isPartialDay && currentHour > 0 ? totalSales / fullSales : 1
+    const tax = Math.round((comp.tax?.total_tax || 0) * ratio)
+
+    return {
+      totalSales,
+      totalTransactions,
+      totalItems,
+      avgTransaction: totalTransactions > 0 ? Math.round(totalSales / totalTransactions) : 0,
+      avgItemsPerOrder: totalTransactions > 0 ? Math.round((totalItems / totalTransactions) * 100) / 100 : 0,
+      tax,
+      discounts: Math.round((comp.discounts?.total_discounts || 0) * ratio),
+      refundAmount: Math.round((comp.refunds?.total_refund_amount || 0) * ratio),
+      netSales: totalSales - tax,
+    }
+  }, [comparisonFastData, datePreset])
+
+  const compLabel = comparisonDates ? formatCompLabel(comparisonDates.start, comparisonDates.end) : ''
 
   // Budget performance data (admin only)
   const { data: budgetPerformanceData } = useQuery({
@@ -540,6 +689,43 @@ export default function AnalyticsPage() {
               </>
             )}
 
+            <Select value={compareMode} onValueChange={(v) => {
+              setCompareMode(v)
+              if (v !== 'custom') { setCompareStartDate(''); setCompareEndDate('') }
+            }}>
+              <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
+                <SelectValue placeholder="Compare to..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No comparison</SelectItem>
+                <SelectItem value="previous_period">Previous period</SelectItem>
+                <SelectItem value="previous_year">Same period last year</SelectItem>
+                <SelectItem value="custom">Custom comparison</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {compareMode === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  value={compareStartDate}
+                  onChange={(e) => setCompareStartDate(e.target.value)}
+                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground"
+                />
+                <span className="text-sm text-muted-foreground self-center">to</span>
+                <input
+                  type="date"
+                  value={compareEndDate}
+                  onChange={(e) => setCompareEndDate(e.target.value)}
+                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground"
+                />
+              </>
+            )}
+
+            {comparisonDates && compareMode !== 'none' && (
+              <span className="text-xs text-muted-foreground self-center">{compLabel}</span>
+            )}
+
             {showClientFilter && (
               <>
                 {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
@@ -645,6 +831,7 @@ export default function AnalyticsPage() {
                 icon={<DollarSign className="h-4 w-4" />}
                 description={dateRangeLabel}
                 accentColor="#FB731E"
+                trend={compValues ? computeTrend(aggregationData?.total_sales || 0, compValues.totalSales) : undefined}
                 annotation={<CurrencyBreakdownAnnotation breakdown={aggregationData?.by_currency} />}
               />
               <KPICard
@@ -655,6 +842,7 @@ export default function AnalyticsPage() {
                 icon={<Calculator className="h-4 w-4" />}
                 description="Excl. tax"
                 accentColor="#10b981"
+                trend={compValues ? computeTrend((aggregationData?.total_sales || 0) - (taxData?.total_tax || 0), compValues.netSales) : undefined}
                 annotation={<CurrencyBreakdownAnnotation breakdown={
                   taxData?.by_currency && aggregationData?.by_currency
                     ? aggregationData.by_currency.map(s => {
@@ -676,6 +864,7 @@ export default function AnalyticsPage() {
                 icon={<Receipt className="h-4 w-4" />}
                 description={dateRangeLabel}
                 accentColor="#8b5cf6"
+                trend={compValues ? computeTrend(taxData?.total_tax || 0, compValues.tax) : undefined}
                 annotation={<CurrencyBreakdownAnnotation breakdown={taxData?.by_currency} />}
               />
               <KPICard
@@ -685,6 +874,7 @@ export default function AnalyticsPage() {
                 icon={<ShoppingCart className="h-4 w-4" />}
                 description={dateRangeLabel}
                 accentColor="#FB731E"
+                trend={compValues ? computeTrend(aggregationData?.total_transactions || 0, compValues.totalTransactions) : undefined}
               />
             </div>
 
@@ -697,6 +887,7 @@ export default function AnalyticsPage() {
                 icon={<TrendingUp className="h-4 w-4" />}
                 description="Per transaction"
                 accentColor="#FB731E"
+                trend={compValues ? computeTrend(basketData?.average_order_value || 0, compValues.avgTransaction) : undefined}
               />
               <KPICard
                 title="Items per Order"
@@ -705,6 +896,7 @@ export default function AnalyticsPage() {
                 icon={<Package className="h-4 w-4" />}
                 description="Basket size"
                 accentColor="#FB731E"
+                trend={compValues ? computeTrend(basketData?.average_items_per_order || 0, compValues.avgItemsPerOrder) : undefined}
               />
               <KPICard
                 title="Total Items Sold"
@@ -713,6 +905,7 @@ export default function AnalyticsPage() {
                 icon={<Package className="h-4 w-4" />}
                 description={dateRangeLabel}
                 accentColor="#6366f1"
+                trend={compValues ? computeTrend(basketData?.total_items || 0, compValues.totalItems) : undefined}
               />
               <KPICard
                 title="Best Seller"
@@ -732,6 +925,7 @@ export default function AnalyticsPage() {
                 icon={<CreditCard className="h-4 w-4" />}
                 description="Total discounts applied"
                 accentColor="#f59e0b"
+                trend={compValues ? computeTrend(discountsData?.total_discounts || 0, compValues.discounts, true) : undefined}
                 annotation={<CurrencyBreakdownAnnotation breakdown={discountsData?.by_currency} />}
               />
               <KPICard
@@ -742,6 +936,7 @@ export default function AnalyticsPage() {
                 icon={<TrendingUp className="h-4 w-4" />}
                 description={`${refundsData?.total_refunds || 0} orders (${Number(refundsData?.refund_rate || 0).toFixed(1)}% rate)`}
                 accentColor="#ef4444"
+                trend={compValues ? computeTrend(refundsData?.total_refund_amount || 0, compValues.refundAmount, true) : undefined}
                 annotation={<CurrencyBreakdownAnnotation breakdown={refundsData?.by_currency} />}
               />
             </div>
