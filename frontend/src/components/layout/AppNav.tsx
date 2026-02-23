@@ -34,7 +34,7 @@ export default function AppNav() {
     return (
       <Link
         to={to}
-        className={`${mobile ? 'block px-2 py-3.5 text-lg' : 'text-sm'} font-medium transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        className={`${mobile ? 'block px-2 py-3.5 text-lg' : 'text-sm'} font-medium transition-all duration-300 ${isActive ? 'text-primary dark:drop-shadow-[0_0_6px_rgba(251,115,30,0.4)]' : 'text-muted-foreground hover:text-foreground'}`}
       >
         {label}
       </Link>
@@ -43,16 +43,16 @@ export default function AppNav() {
 
   return (
     <>
-    <nav className="bg-card/95 backdrop-blur-sm border-b border-border sticky top-0 z-40 shadow-sm">
+    <nav className="bg-card/95 backdrop-blur-md border-b border-border/50 sticky top-0 z-40 shadow-sm dark:bg-brand-shadow-blue/95 dark:border-brand-core-blue/10">
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-14 sm:h-16 items-center">
           {/* Left: Logo + Desktop nav */}
           <div className="flex items-center gap-8">
             <div className="flex flex-col items-center gap-0.5">
-              <h1 className="text-base sm:text-lg font-bold text-foreground tracking-widest uppercase leading-none">
+              <h1 className="text-base sm:text-lg font-light text-foreground tracking-brand-heading uppercase leading-none">
                 Teliporter
               </h1>
-              <span className="text-[10px] sm:text-xs tracking-wider uppercase text-muted-foreground font-medium leading-none">
+              <span className="text-[10px] sm:text-xs tracking-brand-sub uppercase text-muted-foreground font-medium leading-none">
                 Reporting
               </span>
             </div>
@@ -93,7 +93,7 @@ export default function AppNav() {
             </span>
             <button
               onClick={() => logout()}
-              className="hidden sm:inline-flex px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+              className="hidden sm:inline-flex px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md font-medium tracking-wide hover:bg-brand-light-orange hover:shadow-glow-orange-sm transition-all duration-300"
             >
               Logout
             </button>
@@ -111,10 +111,10 @@ export default function AppNav() {
                 {/* Brand */}
                 <div className="px-6 pt-6 pb-4">
                   <div className="flex flex-col items-start gap-0">
-                    <h2 className="text-lg font-bold text-foreground tracking-widest uppercase leading-none">
+                    <h2 className="text-lg font-light text-foreground tracking-brand-heading uppercase leading-none">
                       Teliporter
                     </h2>
-                    <span className="text-xs tracking-wider uppercase text-muted-foreground font-medium">
+                    <span className="text-xs tracking-brand-sub uppercase text-muted-foreground font-medium">
                       Reporting
                     </span>
                   </div>
@@ -138,7 +138,7 @@ export default function AppNav() {
                   </p>
                   <button
                     onClick={() => logout()}
-                    className="w-full px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+                    className="w-full px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-md font-medium tracking-wide hover:bg-brand-light-orange transition-all duration-300"
                   >
                     Logout
                   </button>
@@ -149,7 +149,7 @@ export default function AppNav() {
         </div>
       </div>
 
-      <div className="h-0.5 bg-primary/30" />
+      <div className="h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent dark:via-brand-core-orange/30" />
     </nav>
 
     {ratesData?.rates && ratesData.rates.length > 0 && (

@@ -15,7 +15,7 @@ export const LoginForm = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative dark:bg-brand-shadow-blue">
       <button
         onClick={toggle}
         className="absolute top-6 right-6 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
@@ -25,18 +25,18 @@ export const LoginForm = () => {
       </button>
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h1 className="text-center text-5xl font-bold tracking-widest uppercase text-foreground mb-2">
+          <h1 className="text-center text-5xl font-light tracking-brand-heading uppercase text-foreground mb-2">
             Teliporter
           </h1>
-          <p className="text-center text-lg tracking-wider uppercase text-muted-foreground mb-16">
+          <p className="text-center text-lg tracking-brand-sub uppercase text-muted-foreground mb-16">
             Reporting
           </p>
-          <h2 className="text-center text-2xl font-bold text-foreground">
+          <h2 className="text-center text-xl font-light tracking-wide text-foreground">
             Sign in to your account
           </h2>
         </div>
 
-        <form className="mt-8 space-y-6 bg-card p-6 rounded-xl border border-border shadow-lg" onSubmit={handleSubmit}>
+        <form className="mt-8 space-y-6 bg-card p-6 rounded-xl border border-border shadow-lg dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20" onSubmit={handleSubmit}>
           {error && (
             <div className="rounded-md bg-destructive/10 p-4">
               <p className="text-sm text-destructive">
@@ -58,7 +58,7 @@ export const LoginForm = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 border border-input rounded-md placeholder-muted-foreground text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent sm:text-sm"
+                className="appearance-none relative block w-full px-3 py-2 border border-input rounded-md placeholder-muted-foreground text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent sm:text-sm transition-all duration-200 dark:bg-brand-shadow-blue/80 dark:border-brand-core-blue/30 dark:focus:border-brand-core-orange/50 dark:focus:shadow-[0_0_12px_rgba(251,115,30,0.1)]"
                 placeholder="you@example.com"
               />
             </div>
@@ -75,7 +75,7 @@ export const LoginForm = () => {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 border border-input rounded-md placeholder-muted-foreground text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent sm:text-sm"
+                className="appearance-none relative block w-full px-3 py-2 border border-input rounded-md placeholder-muted-foreground text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent sm:text-sm transition-all duration-200 dark:bg-brand-shadow-blue/80 dark:border-brand-core-blue/30 dark:focus:border-brand-core-orange/50 dark:focus:shadow-[0_0_12px_rgba(251,115,30,0.1)]"
                 placeholder="••••••••"
               />
             </div>
@@ -85,7 +85,7 @@ export const LoginForm = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium tracking-brand-sub uppercase rounded-md text-primary-foreground bg-primary hover:bg-brand-light-orange focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 dark:hover:shadow-glow-orange-sm"
             >
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>

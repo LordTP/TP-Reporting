@@ -19,19 +19,19 @@ export default function ReportsCatalogPage() {
   const categories: ReportCategory[] = ['sales', 'financial', 'operational']
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
       <AppNav />
 
       <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-2">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center dark:bg-brand-core-orange/15">
               <FileText className="h-5 w-5 text-primary" />
             </div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Reports</h2>
+            <h2 className="text-2xl font-light tracking-brand-heading uppercase text-foreground">Reports</h2>
           </div>
-          <p className="text-muted-foreground mt-1 ml-[52px]">
+          <p className="text-sm text-muted-foreground mt-1 ml-[52px]">
             Browse and generate detailed reports for your business. Select a report to view data with filters.
           </p>
         </div>
@@ -45,11 +45,11 @@ export default function ReportsCatalogPage() {
             <div key={categoryKey} className="mb-10">
               {/* Section Header */}
               <div className="flex items-center gap-3 mb-5">
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">{category.label}</h3>
-                  <p className="text-sm text-muted-foreground">{category.description}</p>
+                <div className="shrink-0">
+                  <h3 className="text-sm font-medium tracking-brand-sub uppercase text-foreground dark:text-brand-glow-blue">{category.label}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">{category.description}</p>
                 </div>
-                <div className="flex-1 h-px bg-border/60" />
+                <div className="flex-1 h-px bg-border/60 dark:bg-gradient-to-r dark:from-brand-core-blue/40 dark:via-brand-core-blue/20 dark:to-transparent" />
               </div>
 
               {/* Report Cards Grid */}
@@ -71,19 +71,19 @@ function ReportCard({ report }: { report: ReportDefinition }) {
   const Icon = report.icon
 
   const card = (
-    <Card className={`group relative overflow-hidden transition-all duration-200 h-full ${
+    <Card className={`group relative overflow-hidden transition-all duration-300 h-full ${
       isAvailable
-        ? 'hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
+        ? 'hover:shadow-md hover:-translate-y-0.5 cursor-pointer dark:hover:border-brand-core-orange/40 dark:hover:shadow-glow-orange-sm'
         : 'opacity-50 cursor-default'
     }`}>
       <div
-        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg"
+        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
         style={{ backgroundColor: isAvailable ? report.accentColor : 'hsl(var(--muted-foreground))' }}
       />
       <CardContent className="p-5">
         <div className="flex items-start gap-4">
           <div
-            className="flex items-center justify-center h-10 w-10 rounded-lg bg-muted/60 shrink-0"
+            className="flex items-center justify-center h-10 w-10 rounded-lg bg-muted/60 shrink-0 dark:bg-brand-core-blue/20"
             style={{ color: isAvailable ? report.accentColor : 'hsl(var(--muted-foreground))' }}
           >
             <Icon className="h-5 w-5" />

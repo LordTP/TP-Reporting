@@ -52,7 +52,7 @@ export default function KPICard({
   }
 
   return (
-    <Card className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5", className)}>
+    <Card className={cn("group relative overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 dark:hover:border-brand-core-orange/40 dark:hover:shadow-glow-orange-sm", className)}>
       {accentColor && (
         <div
           className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg"
@@ -63,7 +63,7 @@ export default function KPICard({
         <div className="flex items-center justify-between mb-2 sm:mb-3">
           <span className="text-xs sm:text-sm font-medium text-muted-foreground">{title}</span>
           {icon && (
-            <div className="flex items-center justify-center h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-muted/60 text-muted-foreground">
+            <div className="flex items-center justify-center h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-muted/60 text-muted-foreground dark:bg-brand-core-blue/20 dark:text-brand-light-blue">
               {icon}
             </div>
           )}
@@ -75,7 +75,7 @@ export default function KPICard({
           {trend && (
             <div className={cn(
               'flex items-center gap-1 text-xs font-medium rounded-full px-2 py-0.5',
-              trend.isPositive ? 'text-emerald-700 bg-emerald-50' : 'text-red-700 bg-red-50'
+              trend.isPositive ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15' : 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15'
             )}>
               {trend.isPositive ? (
                 <ArrowUp className="h-3 w-3" />

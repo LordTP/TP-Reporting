@@ -170,8 +170,8 @@ export default function FootfallEntry() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Footfall</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl font-light tracking-brand-heading uppercase">Footfall</h2>
+          <p className="text-sm text-muted-foreground">
             {canManage ? 'Log and manage daily visitor counts per location' : 'View daily visitor counts per location'}
           </p>
         </div>

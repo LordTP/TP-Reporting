@@ -152,8 +152,8 @@ export default function SquareAccountManager() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Square Accounts</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl font-light tracking-brand-heading uppercase">Square Accounts</h2>
+          <p className="text-sm text-muted-foreground">
             Manage your Square account connections and sync settings
           </p>
         </div>

@@ -109,11 +109,11 @@ function formatCurrency(amount: number, currency: string) {
 function SectionHeader({ title, description }: { title: string; description?: string }) {
   return (
     <div className="flex items-center gap-3 mb-5 mt-2">
-      <div>
-        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+      <div className="shrink-0">
+        <h3 className="text-sm font-medium tracking-brand-sub uppercase text-foreground dark:text-brand-glow-blue">{title}</h3>
+        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
       </div>
-      <div className="flex-1 h-px bg-border/60" />
+      <div className="flex-1 h-px bg-border/60 dark:bg-gradient-to-r dark:from-brand-core-blue/40 dark:via-brand-core-blue/20 dark:to-transparent" />
     </div>
   )
 }
@@ -408,20 +408,25 @@ export default function AnalyticsPage() {
     if (!comparisonFastData) return null
     const comp = comparisonFastData
     const isPartialDay = datePreset === 'today'
-    const currentHour = new Date().getHours()
+
+    // Use actual data to determine which hours have sales (timezone-agnostic)
+    const activeHours = new Set(
+      (fastData?.hourly || []).filter((h: any) => h.sales > 0 || h.transactions > 0).map((h: any) => h.hour)
+    )
+    const isPartial = isPartialDay && activeHours.size > 0 && activeHours.size < 24
 
     let totalSales = comp.aggregation?.total_sales || 0
     let totalTransactions = comp.aggregation?.total_transactions || 0
     let totalItems = comp.basket?.total_items || 0
 
-    if (isPartialDay && comp.hourly && currentHour > 0) {
-      totalSales = comp.hourly.filter((h: any) => h.hour < currentHour).reduce((s: number, h: any) => s + h.sales, 0)
-      totalTransactions = comp.hourly.filter((h: any) => h.hour < currentHour).reduce((s: number, h: any) => s + h.transactions, 0)
-      totalItems = comp.hourly.filter((h: any) => h.hour < currentHour).reduce((s: number, h: any) => s + h.items, 0)
+    if (isPartial && comp.hourly) {
+      totalSales = comp.hourly.filter((h: any) => activeHours.has(h.hour)).reduce((s: number, h: any) => s + h.sales, 0)
+      totalTransactions = comp.hourly.filter((h: any) => activeHours.has(h.hour)).reduce((s: number, h: any) => s + h.transactions, 0)
+      totalItems = comp.hourly.filter((h: any) => activeHours.has(h.hour)).reduce((s: number, h: any) => s + h.items, 0)
     }
 
     const fullSales = comp.aggregation?.total_sales || 1
-    const ratio = isPartialDay && currentHour > 0 ? totalSales / fullSales : 1
+    const ratio = isPartial ? totalSales / fullSales : 1
     const tax = Math.round((comp.tax?.total_tax || 0) * ratio)
 
     return {
@@ -435,7 +440,7 @@ export default function AnalyticsPage() {
       refundAmount: Math.round((comp.refunds?.total_refund_amount || 0) * ratio),
       netSales: totalSales - tax,
     }
-  }, [comparisonFastData, datePreset])
+  }, [comparisonFastData, fastData?.hourly, datePreset])
 
   const compLabel = comparisonDates ? formatCompLabel(comparisonDates.start, comparisonDates.end) : ''
 
@@ -602,15 +607,15 @@ export default function AnalyticsPage() {
   // --- Render ---
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
       <AppNav />
 
       <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 overflow-hidden">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Analytics</h2>
-            <p className="text-muted-foreground mt-1">Performance insights across all locations</p>
+            <h2 className="text-2xl font-light tracking-brand-heading uppercase text-foreground">Analytics</h2>
+            <p className="text-sm text-muted-foreground mt-1">Performance insights across all locations</p>
           </div>
           <Button onClick={() => refetch()} variant="outline" size="sm" className="hidden md:inline-flex">
             <RefreshCw className="mr-2 h-4 w-4" />
@@ -619,7 +624,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-8 bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-sm">
+        <div className="mb-8 bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20">
           {/* Mobile: collapsible toggle + refresh */}
           <div className="md:hidden flex items-center justify-between p-4">
             <button
@@ -675,7 +680,7 @@ export default function AnalyticsPage() {
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground"
+                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground dark:bg-brand-shade-blue/60 dark:border-brand-core-blue/30 dark:focus:border-brand-core-orange/50 dark:focus:shadow-[0_0_12px_rgba(251,115,30,0.1)]"
                   placeholder="From"
                 />
                 <span className="text-sm text-muted-foreground self-center">to</span>
@@ -683,7 +688,7 @@ export default function AnalyticsPage() {
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground"
+                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground dark:bg-brand-shade-blue/60 dark:border-brand-core-blue/30 dark:focus:border-brand-core-orange/50 dark:focus:shadow-[0_0_12px_rgba(251,115,30,0.1)]"
                   placeholder="To"
                 />
               </>
@@ -710,14 +715,14 @@ export default function AnalyticsPage() {
                   type="date"
                   value={compareStartDate}
                   onChange={(e) => setCompareStartDate(e.target.value)}
-                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground"
+                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground dark:bg-brand-shade-blue/60 dark:border-brand-core-blue/30 dark:focus:border-brand-core-orange/50 dark:focus:shadow-[0_0_12px_rgba(251,115,30,0.1)]"
                 />
                 <span className="text-sm text-muted-foreground self-center">to</span>
                 <input
                   type="date"
                   value={compareEndDate}
                   onChange={(e) => setCompareEndDate(e.target.value)}
-                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground"
+                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground dark:bg-brand-shade-blue/60 dark:border-brand-core-blue/30 dark:focus:border-brand-core-orange/50 dark:focus:shadow-[0_0_12px_rgba(251,115,30,0.1)]"
                 />
               </>
             )}

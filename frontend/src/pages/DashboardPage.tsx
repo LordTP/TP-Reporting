@@ -413,44 +413,44 @@ export const DashboardPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
       <AppNav />
 
       <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <div className="rounded-xl border border-border p-8 mb-8 bg-card shadow-sm">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground mb-2">
+        <div className="rounded-xl border border-border p-8 mb-8 bg-card shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20">
+          <h2 className="text-2xl font-light tracking-brand-heading uppercase text-foreground mb-2">
             Admin Panel
           </h2>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Manage your organization settings, Square accounts, and client assignments.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-card rounded-xl border border-border/50 p-6 shadow-lg hover:shadow-xl transition-shadow">
+          <div className="bg-card rounded-xl border border-border/50 p-6 shadow-sm hover:shadow-md transition-all duration-300 dark:bg-brand-shade-blue/70 dark:backdrop-blur-md dark:border-brand-core-blue/30 dark:hover:border-brand-core-orange/40 dark:hover:shadow-glow-orange-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-foreground">Square Accounts</h3>
-              <div className="h-10 w-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
+              <h3 className="text-sm font-medium tracking-brand-sub uppercase text-foreground dark:text-brand-glow-blue">Square Accounts</h3>
+              <div className="h-10 w-10 bg-blue-500/10 rounded-lg flex items-center justify-center dark:bg-brand-core-blue/20">
                 <span className="text-2xl">🔗</span>
               </div>
             </div>
             <p className="text-3xl font-bold text-primary mb-1">{accountCount}</p>
             <p className="text-xs text-muted-foreground">Connected accounts</p>
           </div>
-          <div className="bg-card rounded-xl border border-border/50 p-6 shadow-lg hover:shadow-xl transition-shadow">
+          <div className="bg-card rounded-xl border border-border/50 p-6 shadow-sm hover:shadow-md transition-all duration-300 dark:bg-brand-shade-blue/70 dark:backdrop-blur-md dark:border-brand-core-blue/30 dark:hover:border-brand-core-orange/40 dark:hover:shadow-glow-orange-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-foreground">Locations</h3>
-              <div className="h-10 w-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+              <h3 className="text-sm font-medium tracking-brand-sub uppercase text-foreground dark:text-brand-glow-blue">Locations</h3>
+              <div className="h-10 w-10 bg-green-500/10 rounded-lg flex items-center justify-center dark:bg-brand-core-blue/20">
                 <span className="text-2xl">📍</span>
               </div>
             </div>
             <p className="text-3xl font-bold text-primary mb-1">{locationCount}</p>
             <p className="text-xs text-muted-foreground">Active locations</p>
           </div>
-          <div className="bg-card rounded-xl border border-border/50 p-6 shadow-lg hover:shadow-xl transition-shadow">
+          <div className="bg-card rounded-xl border border-border/50 p-6 shadow-sm hover:shadow-md transition-all duration-300 dark:bg-brand-shade-blue/70 dark:backdrop-blur-md dark:border-brand-core-blue/30 dark:hover:border-brand-core-orange/40 dark:hover:shadow-glow-orange-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-foreground">Transactions</h3>
-              <div className="h-10 w-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
+              <h3 className="text-sm font-medium tracking-brand-sub uppercase text-foreground dark:text-brand-glow-blue">Transactions</h3>
+              <div className="h-10 w-10 bg-purple-500/10 rounded-lg flex items-center justify-center dark:bg-brand-core-blue/20">
                 <span className="text-2xl">💳</span>
               </div>
             </div>
@@ -461,18 +461,18 @@ export const DashboardPage = () => {
 
         {isAdmin && (
           <Tabs defaultValue="users" className="w-full">
-            <TabsList className="w-full justify-start h-12 bg-muted/50 p-1 rounded-lg mb-6">
-              <TabsTrigger value="users" className="px-5 py-2">Users</TabsTrigger>
-              <TabsTrigger value="clients" className="px-5 py-2">Clients</TabsTrigger>
-              <TabsTrigger value="rates" className="px-5 py-2">Exchange Rates</TabsTrigger>
-              <TabsTrigger value="groups" className="px-5 py-2">Location Groups</TabsTrigger>
-              <TabsTrigger value="client-groups" className="px-5 py-2">Client Groups</TabsTrigger>
-              <TabsTrigger value="permissions" className="px-5 py-2">Permissions</TabsTrigger>
+            <TabsList className="w-full justify-start h-12 bg-muted/50 p-1 rounded-lg mb-6 overflow-x-auto">
+              <TabsTrigger value="users" className="px-5 py-2 text-xs tracking-brand-sub uppercase">Users</TabsTrigger>
+              <TabsTrigger value="clients" className="px-5 py-2 text-xs tracking-brand-sub uppercase">Clients</TabsTrigger>
+              <TabsTrigger value="rates" className="px-5 py-2 text-xs tracking-brand-sub uppercase">Rates</TabsTrigger>
+              <TabsTrigger value="groups" className="px-5 py-2 text-xs tracking-brand-sub uppercase">Location Groups</TabsTrigger>
+              <TabsTrigger value="client-groups" className="px-5 py-2 text-xs tracking-brand-sub uppercase">Client Groups</TabsTrigger>
+              <TabsTrigger value="permissions" className="px-5 py-2 text-xs tracking-brand-sub uppercase">Permissions</TabsTrigger>
             </TabsList>
 
           {/* Client Management */}
           <TabsContent value="clients">
-            <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+            <div className="bg-card rounded-xl border border-border/50 p-8 shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20 dark:shadow-none">
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h3 className="text-xl font-bold text-foreground mb-1">
@@ -732,7 +732,7 @@ export const DashboardPage = () => {
 
           {/* User Management */}
           <TabsContent value="users">
-          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20 dark:shadow-none">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-foreground mb-1">User Management</h3>
@@ -1121,7 +1121,7 @@ export const DashboardPage = () => {
 
           {/* Exchange Rates */}
           <TabsContent value="rates">
-          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20 dark:shadow-none">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-foreground mb-1">
@@ -1284,7 +1284,7 @@ export const DashboardPage = () => {
 
           {/* Location Groups */}
           <TabsContent value="groups">
-          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20 dark:shadow-none">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-foreground mb-1">
@@ -1452,7 +1452,7 @@ export const DashboardPage = () => {
 
           {/* Client Groups */}
           <TabsContent value="client-groups">
-          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20 dark:shadow-none">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-foreground mb-1">
@@ -1617,7 +1617,7 @@ export const DashboardPage = () => {
 
           {/* Role Permissions */}
           <TabsContent value="permissions">
-          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-lg">
+          <div className="bg-card rounded-xl border border-border/50 p-8 shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20 dark:shadow-none">
             <RolePermissionMatrix />
           </div>
           </TabsContent>

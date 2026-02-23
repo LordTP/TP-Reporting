@@ -41,13 +41,13 @@ export default function ReportLayout({ title, description, children, filters, on
   ].filter(Boolean).length
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
       <AppNav />
 
       <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Breadcrumb + Header */}
         <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
-          <Link to="/reports" className="hover:text-primary flex items-center gap-1">
+          <Link to="/reports" className="hover:text-primary flex items-center gap-1 transition-colors">
             <ArrowLeft className="h-3.5 w-3.5" />
             Reports
           </Link>
@@ -57,8 +57,8 @@ export default function ReportLayout({ title, description, children, filters, on
 
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">{title}</h2>
-            {description && <p className="text-muted-foreground mt-1">{description}</p>}
+            <h2 className="text-2xl font-light tracking-brand-heading uppercase text-foreground">{title}</h2>
+            {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
           </div>
           {onRefresh && (
             <Button onClick={onRefresh} variant="outline" size="sm" className="hidden md:inline-flex">
@@ -69,7 +69,7 @@ export default function ReportLayout({ title, description, children, filters, on
         </div>
 
         {/* Filters */}
-        <div className="mb-8 bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-sm">
+        <div className="mb-8 bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20 dark:shadow-none">
           {/* Mobile: collapsible toggle + refresh */}
           <div className="md:hidden flex items-center justify-between p-4">
             <button
@@ -127,7 +127,7 @@ export default function ReportLayout({ title, description, children, filters, on
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground"
+                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground dark:bg-brand-shade-blue/60 dark:border-brand-core-blue/30 dark:focus:border-brand-core-orange/50"
                   placeholder="From"
                 />
                 <span className="text-sm text-muted-foreground self-center">to</span>
@@ -135,7 +135,7 @@ export default function ReportLayout({ title, description, children, filters, on
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground"
+                  className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground dark:bg-brand-shade-blue/60 dark:border-brand-core-blue/30 dark:focus:border-brand-core-orange/50"
                   placeholder="To"
                 />
               </>

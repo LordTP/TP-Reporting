@@ -419,8 +419,8 @@ export default function BudgetUpload() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Budgets</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl font-light tracking-brand-heading uppercase">Budgets</h2>
+          <p className="text-sm text-muted-foreground">
             {canManage ? 'Manage daily budget targets per location' : 'View budget targets per location'}
           </p>
         </div>

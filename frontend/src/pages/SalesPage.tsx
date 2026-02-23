@@ -282,25 +282,25 @@ export default function SalesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
       <AppNav />
 
       <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Sales Transactions</h2>
-            <p className="text-muted-foreground mt-1">
+            <h2 className="text-2xl font-light tracking-brand-heading uppercase text-foreground">Sales Transactions</h2>
+            <p className="text-sm text-muted-foreground mt-1">
               View and analyze your sales data
             </p>
           </div>
-          <Button onClick={() => refetchTransactions()} variant="outline" className="hidden md:inline-flex shadow-md">
+          <Button onClick={() => refetchTransactions()} variant="outline" className="hidden md:inline-flex">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
         </div>
 
         {/* Filters */}
-        <div className="mb-8 bg-card/80 backdrop-blur-sm rounded-xl border border-border/50 shadow-lg">
+        <div className="mb-8 bg-card/80 backdrop-blur-sm rounded-xl border border-border/50 shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20 dark:shadow-none">
           {/* Mobile: collapsible toggle + refresh */}
           <div className="md:hidden flex items-center justify-between p-4 sm:p-6">
             <button
@@ -509,7 +509,7 @@ export default function SalesPage() {
                     setSearchQuery(val)
                   }}
                   placeholder="Search last 4 digits..."
-                  className="w-full pl-9 pr-9 py-2 text-sm border border-input rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full pl-9 pr-9 py-2 text-sm border border-input rounded-lg bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-brand-shade-blue/60 dark:border-brand-core-blue/30 dark:focus:ring-brand-core-orange/50 dark:focus:border-brand-core-orange/50"
                   inputMode="numeric"
                 />
                 {searchQuery && (
@@ -545,20 +545,20 @@ export default function SalesPage() {
               <div className="relative w-full overflow-auto">
                 <table className="w-full caption-bottom text-sm">
                   <thead className="[&_tr]:border-b">
-                    <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                    <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted dark:border-brand-core-blue/15">
+                      <th className="h-12 px-4 text-left align-middle text-xs font-medium tracking-brand-sub uppercase text-muted-foreground">
                         Date
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                      <th className="h-12 px-4 text-left align-middle text-xs font-medium tracking-brand-sub uppercase text-muted-foreground">
                         Amount
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                      <th className="h-12 px-4 text-left align-middle text-xs font-medium tracking-brand-sub uppercase text-muted-foreground">
                         Payment
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                      <th className="h-12 px-4 text-left align-middle text-xs font-medium tracking-brand-sub uppercase text-muted-foreground">
                         Type
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                      <th className="h-12 px-4 text-left align-middle text-xs font-medium tracking-brand-sub uppercase text-muted-foreground">
                         Location
                       </th>
                       <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground w-8">
@@ -570,7 +570,7 @@ export default function SalesPage() {
                       <tr
                         key={transaction.id}
                         onClick={() => setSelectedTxnId(transaction.id)}
-                        className="border-b transition-colors hover:bg-muted/50 cursor-pointer group"
+                        className="border-b transition-colors hover:bg-muted/50 cursor-pointer group dark:border-brand-core-blue/10 dark:hover:bg-brand-core-blue/10"
                       >
                         <td className="p-4 align-middle">
                           {formatDate(transaction.transaction_date)}
@@ -621,7 +621,7 @@ export default function SalesPage() {
                     <button
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                       disabled={currentPage <= 1}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-input rounded-md hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-input rounded-md hover:bg-muted disabled:opacity-40 disabled:pointer-events-none dark:border-brand-core-blue/30 dark:hover:bg-brand-core-blue/15"
                     >
                       <ChevronLeft className="h-4 w-4" />
                       Previous
@@ -629,7 +629,7 @@ export default function SalesPage() {
                     <button
                       onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                       disabled={currentPage >= totalPages}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-input rounded-md hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-input rounded-md hover:bg-muted disabled:opacity-40 disabled:pointer-events-none dark:border-brand-core-blue/30 dark:hover:bg-brand-core-blue/15"
                     >
                       Next
                       <ChevronRight className="h-4 w-4" />
