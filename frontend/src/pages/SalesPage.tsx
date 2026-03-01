@@ -96,7 +96,8 @@ export default function SalesPage() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const isClientRole = user?.role === 'client'
-  const hasMultipleClients = (user?.client_ids?.length ?? 0) > 1
+  const isStoreManager = user?.role === 'store_manager'
+  const hasMultipleClients = !isStoreManager && (user?.client_ids?.length ?? 0) > 1
   const showClientFilter = isAdmin || hasMultipleClients
 
   // Filter state
@@ -178,10 +179,17 @@ export default function SalesPage() {
       )
       return results.flatMap((r: any) => r.locations || [])
     },
-    enabled: !isAdmin && hasMultipleClients,
+    enabled: !isAdmin && !isStoreManager && hasMultipleClients,
   })
 
-  const allLocations = isAdmin ? adminLocations : scopedLocations
+  // Store managers: fetch locations via direct assignment
+  const { data: storeManagerLocations } = useQuery({
+    queryKey: ['my-locations'],
+    queryFn: async () => apiClient.get('/users/me/locations'),
+    enabled: isStoreManager,
+  })
+
+  const allLocations = isAdmin ? adminLocations : isStoreManager ? storeManagerLocations : scopedLocations
 
   // Fetch client locations when a client is selected
   const { data: clientLocationsData } = useQuery({

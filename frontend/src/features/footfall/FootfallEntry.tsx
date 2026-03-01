@@ -59,7 +59,8 @@ export default function FootfallEntry() {
   const [month, setMonth] = useState(() => new Date())
   const hasToken = !!localStorage.getItem('access_token')
 
-  // Fetch locations — same pattern as BudgetUpload
+  // Fetch locations — role-aware
+  const isStoreManager = user?.role === 'store_manager'
   const { data: locations } = useQuery({
     queryKey: ['locations-for-footfall'],
     queryFn: async () => {
@@ -73,6 +74,9 @@ export default function FootfallEntry() {
         return results.flatMap((r) =>
           (r.locations || []).map((l) => ({ id: l.id, name: l.name }))
         ) as LocationInfo[]
+      } else if (isStoreManager) {
+        const locs = await apiClient.get<Array<{ id: string; name: string }>>('/users/me/locations')
+        return locs.map((l) => ({ id: l.id, name: l.name })) as LocationInfo[]
       } else {
         const clientsData = await apiClient.get<{ clients: Array<{ id: string }> }>('/clients')
         if (!clientsData.clients || clientsData.clients.length === 0) return []

@@ -82,6 +82,7 @@ function resolveDateRange(
 export function useReportFilters() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+  const isStoreManager = user?.role === 'store_manager'
   const isClientLocked = !!user?.client_id
 
   const [datePreset, setDatePreset] = useState('today')
@@ -93,7 +94,7 @@ export function useReportFilters() {
   )
   const [selectedClientGroup, setSelectedClientGroup] = useState<string>('all')
 
-  const { data: allLocations } = useQuery({
+  const { data: adminLocations } = useQuery({
     queryKey: ['all-locations'],
     queryFn: async () => {
       const accountsData = await apiClient.get('/square/accounts')
@@ -106,6 +107,14 @@ export function useReportFilters() {
     },
     enabled: isAdmin,
   })
+
+  const { data: storeManagerLocations } = useQuery({
+    queryKey: ['my-locations'],
+    queryFn: async () => apiClient.get('/users/me/locations'),
+    enabled: isStoreManager,
+  })
+
+  const allLocations = isAdmin ? adminLocations : isStoreManager ? storeManagerLocations : undefined
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients'],
