@@ -653,17 +653,18 @@ export default function AnalyticsPage() {
               Refresh
             </Button>
           </div>
-          <SheetContent side="right" className="w-[300px] flex flex-col p-0">
+          <SheetContent side="right" className="w-[300px] flex flex-col p-0 !bg-[hsl(240,16%,9%)] !border-l !border-brand-core-blue/20">
             <SheetTitle className="sr-only">Filters</SheetTitle>
-            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border/50">
+            <div className="flex items-center justify-between px-5 pt-5 pb-2">
               <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-semibold">Filters</span>
+                <Filter className="h-4 w-4 text-brand-light-blue" />
+                <span className="text-sm font-semibold text-white">Filters</span>
               </div>
             </div>
+            <div className="h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent dark:via-brand-core-orange/30" />
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Date Range</label>
+                <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Date Range</label>
                 <Select value={datePreset} onValueChange={setDatePreset}>
                   <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="Date range" /></SelectTrigger>
                   <SelectContent>
@@ -685,13 +686,13 @@ export default function AnalyticsPage() {
               </div>
               {datePreset === 'custom' && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground block">Custom Dates</label>
+                  <label className="text-xs font-medium text-brand-light-blue block">Custom Dates</label>
                   <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background" />
                   <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background" />
                 </div>
               )}
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Comparison</label>
+                <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Comparison</label>
                 <Select value={compareMode} onValueChange={(v) => { setCompareMode(v); if (v !== 'custom') { setCompareStartDate(''); setCompareEndDate('') } }}>
                   <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="Compare to..." /></SelectTrigger>
                   <SelectContent>
@@ -704,7 +705,7 @@ export default function AnalyticsPage() {
               </div>
               {compareMode === 'custom' && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground block">Comparison Dates</label>
+                  <label className="text-xs font-medium text-brand-light-blue block">Comparison Dates</label>
                   <input type="date" value={compareStartDate} onChange={(e) => setCompareStartDate(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background" />
                   <input type="date" value={compareEndDate} onChange={(e) => setCompareEndDate(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background" />
                 </div>
@@ -713,7 +714,7 @@ export default function AnalyticsPage() {
                 <>
                   {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Client Group</label>
+                      <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Client Group</label>
                       <Select value={selectedClientGroup} onValueChange={(value) => { setSelectedClientGroup(value); if (value !== 'all') setSelectedClient('all'); setSelectedLocation('all') }}>
                         <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All client groups" /></SelectTrigger>
                         <SelectContent>
@@ -724,7 +725,7 @@ export default function AnalyticsPage() {
                     </div>
                   )}
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Client</label>
+                    <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Client</label>
                     <Select value={selectedClient} onValueChange={(value) => { setSelectedClient(value); if (value !== 'all') setSelectedClientGroup('all'); setSelectedLocation('all') }}>
                       <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All clients" /></SelectTrigger>
                       <SelectContent>
@@ -735,7 +736,7 @@ export default function AnalyticsPage() {
                   </div>
                   {!clientHasKeywords && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Location</label>
+                      <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Location</label>
                       <Select value={selectedLocation} onValueChange={setSelectedLocation}>
                         <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All locations" /></SelectTrigger>
                         <SelectContent>
@@ -749,7 +750,7 @@ export default function AnalyticsPage() {
               )}
               {isStoreManager && (
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Location</label>
+                  <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Location</label>
                   <Select value={selectedLocation} onValueChange={setSelectedLocation}>
                     <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All locations" /></SelectTrigger>
                     <SelectContent>

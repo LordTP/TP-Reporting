@@ -327,17 +327,18 @@ export default function SalesPage() {
               Refresh
             </Button>
           </div>
-          <SheetContent side="right" className="w-[300px] flex flex-col p-0">
+          <SheetContent side="right" className="w-[300px] flex flex-col p-0 !bg-[hsl(240,16%,9%)] !border-l !border-brand-core-blue/20">
             <SheetTitle className="sr-only">Filters</SheetTitle>
-            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border/50">
+            <div className="flex items-center justify-between px-5 pt-5 pb-2">
               <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-semibold">Filters</span>
+                <Filter className="h-4 w-4 text-brand-light-blue" />
+                <span className="text-sm font-semibold text-white">Filters</span>
               </div>
             </div>
+            <div className="h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent dark:via-brand-core-orange/30" />
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Date Range</label>
+                <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Date Range</label>
                 <Select value={datePreset} onValueChange={setDatePreset}>
                   <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="Select date range" /></SelectTrigger>
                   <SelectContent>
@@ -358,7 +359,7 @@ export default function SalesPage() {
                 <>
                   {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Client Group</label>
+                      <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Client Group</label>
                       <Select value={selectedClientGroup} onValueChange={(value) => { setSelectedClientGroup(value); if (value !== 'all') setSelectedClient('all'); setSelectedLocation('all') }}>
                         <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All Client Groups" /></SelectTrigger>
                         <SelectContent>
@@ -369,7 +370,7 @@ export default function SalesPage() {
                     </div>
                   )}
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Client</label>
+                    <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Client</label>
                     <Select value={selectedClient} onValueChange={(value) => { setSelectedClient(value); if (value !== 'all') setSelectedClientGroup('all'); setSelectedLocation('all') }}>
                       <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All Clients" /></SelectTrigger>
                       <SelectContent>
@@ -380,7 +381,7 @@ export default function SalesPage() {
                   </div>
                   {filteredLocations && filteredLocations.length > 0 && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Location</label>
+                      <label className="text-xs font-medium text-brand-light-blue mb-1.5 block">Location</label>
                       <Select value={selectedLocation} onValueChange={setSelectedLocation}>
                         <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All Locations" /></SelectTrigger>
                         <SelectContent>
