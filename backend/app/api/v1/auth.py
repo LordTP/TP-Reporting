@@ -48,12 +48,18 @@ async def login(
     access_token, refresh_token = auth_service.create_user_tokens(user)
 
     # Load assigned client IDs for multi-client roles
-    MULTI_CLIENT_ROLES = {"store_manager", "reporting", "manager"}
+    MULTI_CLIENT_ROLES = {"reporting", "manager"}
+    LOCATION_BASED_ROLES = {"store_manager"}
     assigned_client_ids = None
+    assigned_location_ids = None
     role_val = user.role.value if isinstance(user.role, UserRole) else user.role
     if role_val in MULTI_CLIENT_ROLES:
         rows = db.query(user_clients.c.client_id).filter(user_clients.c.user_id == user.id).all()
         assigned_client_ids = [str(r[0]) for r in rows] if rows else []
+    elif role_val in LOCATION_BASED_ROLES:
+        from app.models.user import user_locations
+        rows = db.query(user_locations.c.location_id).filter(user_locations.c.user_id == user.id).all()
+        assigned_location_ids = [str(r[0]) for r in rows] if rows else []
 
     return LoginResponse(
         access_token=access_token,
@@ -66,6 +72,7 @@ async def login(
             organization_id=str(user.organization_id),
             client_id=str(user.client_id) if user.client_id else None,
             client_ids=assigned_client_ids,
+            location_ids=assigned_location_ids,
             is_active=user.is_active
         )
     )

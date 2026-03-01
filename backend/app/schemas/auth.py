@@ -47,6 +47,7 @@ class UserResponse(BaseModel):
     organization_id: str
     client_id: Optional[str] = None
     client_ids: Optional[List[str]] = None
+    location_ids: Optional[List[str]] = None
     is_active: bool
 
     class Config:

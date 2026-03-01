@@ -12,6 +12,10 @@ interface SalesLineChartProps {
     sales: number
     transactions?: number
   }>
+  comparisonData?: Array<{
+    date: string
+    sales: number
+  }>
   title?: string
   description?: string
   currency?: string
@@ -19,6 +23,7 @@ interface SalesLineChartProps {
 
 export default function SalesLineChart({
   data,
+  comparisonData,
   title = 'Sales Trend',
   description = 'Daily sales over time',
   currency = 'GBP',
@@ -43,7 +48,13 @@ export default function SalesLineChart({
     }
   }
 
-  const hasTransactions = data[0]?.transactions !== undefined
+  const hasComparison = comparisonData && comparisonData.length > 0
+
+  // Merge comparison data by index (since date ranges differ)
+  const chartData = data.map((item, i) => ({
+    ...item,
+    ...(hasComparison && comparisonData[i] ? { comparisonSales: comparisonData[i].sales } : {}),
+  }))
 
   return (
     <Card>
@@ -53,18 +64,12 @@ export default function SalesLineChart({
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
             <defs>
               <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#FB731E" stopOpacity={0.3} />
                 <stop offset="95%" stopColor="#FB731E" stopOpacity={0} />
               </linearGradient>
-              {hasTransactions && (
-                <linearGradient id="transactionsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-              )}
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
             <XAxis
@@ -77,7 +82,6 @@ export default function SalesLineChart({
               dy={8}
             />
             <YAxis
-              yAxisId="left"
               tickFormatter={formatCurrency}
               tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
               stroke="hsl(var(--border))"
@@ -86,23 +90,8 @@ export default function SalesLineChart({
               width={50}
               domain={[() => 0, 'auto']}
             />
-            {hasTransactions && (
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                stroke="hsl(var(--border))"
-                tickLine={false}
-                axisLine={false}
-                width={35}
-                domain={[() => 0, 'auto']}
-              />
-            )}
             <Tooltip
-              formatter={(value: number, name: string) => [
-                name === 'Sales' ? formatCurrencyFull(value) : value.toLocaleString(),
-                name,
-              ]}
+              formatter={(value: number, name: string) => [formatCurrencyFull(value), name]}
               labelFormatter={formatDate}
               contentStyle={{
                 backgroundColor: 'hsl(var(--card))',
@@ -113,9 +102,8 @@ export default function SalesLineChart({
               }}
               labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: 4 }}
             />
-            <Legend wrapperStyle={{ color: 'hsl(var(--muted-foreground))', paddingTop: 16 }} />
+            {hasComparison && <Legend wrapperStyle={{ color: 'hsl(var(--muted-foreground))', paddingTop: 16 }} />}
             <Area
-              yAxisId="left"
               type="monotone"
               dataKey="sales"
               stroke="#FB731E"
@@ -125,17 +113,17 @@ export default function SalesLineChart({
               activeDot={{ r: 5, strokeWidth: 2, fill: '#FB731E' }}
               name="Sales"
             />
-            {hasTransactions && (
+            {hasComparison && (
               <Area
-                yAxisId="right"
                 type="monotone"
-                dataKey="transactions"
-                stroke="#10b981"
+                dataKey="comparisonSales"
+                stroke="#94a3b8"
                 strokeWidth={2}
-                fill="url(#transactionsGradient)"
+                strokeDasharray="5 5"
+                fill="none"
                 dot={false}
-                activeDot={{ r: 4, strokeWidth: 2, fill: '#10b981' }}
-                name="Transactions"
+                activeDot={{ r: 4, strokeWidth: 2, fill: '#94a3b8' }}
+                name="Prior Period"
               />
             )}
           </AreaChart>

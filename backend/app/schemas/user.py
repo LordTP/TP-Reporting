@@ -18,6 +18,7 @@ class UserCreate(UserBase):
     role: str = "client"
     client_id: Optional[str] = None
     client_ids: Optional[List[str]] = None
+    location_ids: Optional[List[str]] = None
 
 
 class UserUpdate(BaseModel):
@@ -27,6 +28,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     client_id: Optional[str] = None
     client_ids: Optional[List[str]] = None
+    location_ids: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
 
@@ -41,6 +43,8 @@ class UserResponse(BaseModel):
     client_name: Optional[str] = None
     client_ids: Optional[List[str]] = None
     client_names: Optional[List[str]] = None
+    location_ids: Optional[List[str]] = None
+    location_names: Optional[List[str]] = None
     is_active: bool
     created_at: datetime
     last_login: Optional[datetime] = None

@@ -12,6 +12,12 @@ interface HourlySalesChartProps {
     transactions: number
     items: number
   }>
+  comparisonData?: Array<{
+    hour: number
+    sales: number
+    transactions: number
+    items: number
+  }>
   title?: string
   description?: string
   currency?: string
@@ -19,6 +25,7 @@ interface HourlySalesChartProps {
 
 export default function HourlySalesChart({
   data,
+  comparisonData,
   title = 'Hourly Sales Trends',
   description = 'Peak selling hours',
   currency = 'GBP',
@@ -42,10 +49,16 @@ export default function HourlySalesChart({
     return `${hour - 12}pm`
   }
 
+  const hasComparison = comparisonData && comparisonData.length > 0
+  const compMap = hasComparison
+    ? new Map(comparisonData.map(d => [d.hour, d]))
+    : null
+
   // Add formatted hour labels to data
   const chartData = data.map((item) => ({
     ...item,
     hourLabel: formatHour(item.hour),
+    ...(compMap ? { comparisonSales: compMap.get(item.hour)?.sales || 0 } : {}),
   }))
 
   return (
@@ -62,10 +75,6 @@ export default function HourlySalesChart({
                 <stop offset="5%" stopColor="#FB731E" stopOpacity={0.3} />
                 <stop offset="95%" stopColor="#FB731E" stopOpacity={0} />
               </linearGradient>
-              <linearGradient id="hourlyTransactionsGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-              </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
             <XAxis
@@ -77,7 +86,6 @@ export default function HourlySalesChart({
               dy={8}
             />
             <YAxis
-              yAxisId="left"
               tickFormatter={formatCurrency}
               tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
               stroke="hsl(var(--border))"
@@ -86,21 +94,9 @@ export default function HourlySalesChart({
               width={50}
               domain={[() => 0, 'auto']}
             />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-              stroke="hsl(var(--border))"
-              tickLine={false}
-              axisLine={false}
-              width={35}
-              domain={[() => 0, 'auto']}
-            />
             <Tooltip
               formatter={(value: number, name: string) => {
-                if (name === 'Sales') return [formatCurrencyFull(value), 'Sales']
-                if (name === 'Transactions') return [value.toLocaleString(), 'Transactions']
-                return [value.toLocaleString(), name]
+                return [formatCurrencyFull(value), name]
               }}
               contentStyle={{
                 backgroundColor: 'hsl(var(--card))',
@@ -111,9 +107,8 @@ export default function HourlySalesChart({
               }}
               labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: 4 }}
             />
-            <Legend wrapperStyle={{ color: 'hsl(var(--muted-foreground))', paddingTop: 16 }} />
+            {hasComparison && <Legend wrapperStyle={{ color: 'hsl(var(--muted-foreground))', paddingTop: 16 }} />}
             <Area
-              yAxisId="left"
               type="monotone"
               dataKey="sales"
               stroke="#FB731E"
@@ -123,17 +118,19 @@ export default function HourlySalesChart({
               activeDot={{ r: 5, strokeWidth: 2, fill: '#FB731E' }}
               name="Sales"
             />
-            <Area
-              yAxisId="right"
-              type="monotone"
-              dataKey="transactions"
-              stroke="#10b981"
-              strokeWidth={2}
-              fill="url(#hourlyTransactionsGradient)"
-              dot={false}
-              activeDot={{ r: 4, strokeWidth: 2, fill: '#10b981' }}
-              name="Transactions"
-            />
+            {hasComparison && (
+              <Area
+                type="monotone"
+                dataKey="comparisonSales"
+                stroke="#94a3b8"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                fill="none"
+                dot={false}
+                activeDot={{ r: 4, strokeWidth: 2, fill: '#94a3b8' }}
+                name="Prior Period"
+              />
+            )}
           </AreaChart>
         </ResponsiveContainer>
       </CardContent>

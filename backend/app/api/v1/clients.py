@@ -39,7 +39,7 @@ async def list_clients(
 
     # Scope for non-admin users
     role_val = current_user.role.value if isinstance(current_user.role, UserRole) else current_user.role
-    MULTI_CLIENT_ROLES = {"store_manager", "reporting", "manager"}
+    MULTI_CLIENT_ROLES = {"reporting", "manager"}
     if role_val in MULTI_CLIENT_ROLES:
         allowed_ids = db.query(user_clients.c.client_id).filter(
             user_clients.c.user_id == current_user.id

@@ -238,7 +238,8 @@ export default function AnalyticsPage() {
   const { hasPermission } = usePermissionStore()
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const isClientRole = user?.role === 'client'
-  const hasMultipleClients = (user?.client_ids?.length ?? 0) > 1
+  const isStoreManager = user?.role === 'store_manager'
+  const hasMultipleClients = !isStoreManager && (user?.client_ids?.length ?? 0) > 1
   const showClientFilter = isAdmin || hasMultipleClients
 
   // Filter state
@@ -300,7 +301,14 @@ export default function AnalyticsPage() {
     enabled: !isAdmin && hasMultipleClients,
   })
 
-  const allLocations = isAdmin ? adminLocations : scopedLocations
+  // Store managers: fetch locations via direct assignment
+  const { data: storeManagerLocations } = useQuery({
+    queryKey: ['my-locations'],
+    queryFn: async () => apiClient.get('/users/me/locations'),
+    enabled: isStoreManager,
+  })
+
+  const allLocations = isAdmin ? adminLocations : isStoreManager ? storeManagerLocations : scopedLocations
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients'],
@@ -488,6 +496,8 @@ export default function AnalyticsPage() {
         : 'Custom Range')
     : (PRESET_LABELS[datePreset] || `Last ${datePreset} days`)
   const hasBudgetData = !!(budgetPerformanceData?.summary && budgetPerformanceData.summary.total_budget > 0)
+
+  const isSingleDay = ['today', 'tomorrow', 'yesterday'].includes(datePreset) || (datePreset === 'custom' && customStartDate === customEndDate)
 
   const lineChartData = summaryData?.top_days.map((day) => ({
     date: day.date,
@@ -795,6 +805,20 @@ export default function AnalyticsPage() {
                   </div>
                 )}
               </>
+            )}
+
+            {isStoreManager && (
+              <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+                <SelectTrigger className="w-full sm:w-[200px] h-9 text-sm">
+                  <SelectValue placeholder="All locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All my locations</SelectItem>
+                  {(allLocations || []).map((location: any) => (
+                    <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
         </div>
@@ -1107,15 +1131,18 @@ export default function AnalyticsPage() {
             {/* ═══════════════════ SALES ANALYTICS ═══════════════════ */}
             <SectionHeader title="Sales Analytics" description="Trends and patterns" />
 
-            {/* Sales Trend - Full Width */}
-            <div className="mb-6">
-              <SalesLineChart
-                data={lineChartData}
-                title="Sales Trend"
-                description={`Daily sales - ${dateRangeLabel}`}
-                currency={currency}
-              />
-            </div>
+            {/* Sales Trend - Full Width (hidden for single day) */}
+            {!isSingleDay && (
+              <div className="mb-6">
+                <SalesLineChart
+                  data={lineChartData}
+                  comparisonData={comparisonFastData?.summary?.top_days?.map((d: any) => ({ date: d.date, sales: d.total_sales }))}
+                  title="Sales Trend"
+                  description={`Daily sales - ${dateRangeLabel}`}
+                  currency={currency}
+                />
+              </div>
+            )}
 
             <div className="grid gap-6 md:grid-cols-2 mb-6">
               <TopProductsChart
@@ -1128,6 +1155,7 @@ export default function AnalyticsPage() {
               <div className="flex flex-col gap-6">
                 <HourlySalesChart
                   data={hourlyData || []}
+                  comparisonData={comparisonFastData?.hourly}
                   title="Hourly Sales Pattern"
                   description={`Average daily sales by hour - ${dateRangeLabel}`}
                   currency={currency}

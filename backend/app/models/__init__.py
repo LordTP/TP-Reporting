@@ -6,7 +6,7 @@ from app.database import Base
 
 # Import models in dependency order to avoid relationship resolution issues
 from app.models.organization import Organization
-from app.models.user import User
+from app.models.user import User, user_locations
 from app.models.square_account import SquareAccount
 from app.models.location import Location
 from app.models.sales_transaction import SalesTransaction
@@ -35,6 +35,7 @@ __all__ = [
     "Client",
     "client_locations",
     "user_clients",
+    "user_locations",
     "Budget",
     "BudgetType",
     "CatalogItemCategory",

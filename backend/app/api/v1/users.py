@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_current_admin_user
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, user_locations
 from app.models.client import Client, user_clients
+from app.models.location import Location
+from app.models.square_account import SquareAccount
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserListResponse
 from app.services.auth_service import create_user
 from app.utils.security import hash_password
@@ -15,8 +17,9 @@ from app.utils.security import hash_password
 router = APIRouter(tags=["users"])
 
 VALID_ROLES = {r.value for r in UserRole}
-CLIENT_LINKABLE_ROLES = {"client", "store_manager", "reporting", "manager"}
-MULTI_CLIENT_ROLES = {"store_manager", "reporting", "manager"}
+CLIENT_LINKABLE_ROLES = {"client", "reporting", "manager"}
+MULTI_CLIENT_ROLES = {"reporting", "manager"}
+LOCATION_BASED_ROLES = {"store_manager"}
 ADMIN_ROLES = {"admin", "superadmin"}
 
 
@@ -31,6 +34,13 @@ def _build_user_response(user: User) -> UserResponse:
         assigned_ids = [str(c.id) for c in user.assigned_clients]
         assigned_names = [c.name for c in user.assigned_clients]
 
+    # For location-based roles, include assigned_locations list
+    loc_ids = None
+    loc_names = None
+    if role_val in LOCATION_BASED_ROLES and user.assigned_locations:
+        loc_ids = [str(loc.id) for loc in user.assigned_locations]
+        loc_names = [loc.name for loc in user.assigned_locations]
+
     return UserResponse(
         id=str(user.id),
         email=user.email,
@@ -41,6 +51,8 @@ def _build_user_response(user: User) -> UserResponse:
         client_name=user.client.name if user.client else None,
         client_ids=assigned_ids,
         client_names=assigned_names,
+        location_ids=loc_ids,
+        location_names=loc_names,
         is_active=user.is_active,
         created_at=user.created_at,
         last_login=user.last_login,
@@ -58,7 +70,34 @@ async def get_current_user_profile(
     role_val = current_user.role.value if isinstance(current_user.role, UserRole) else current_user.role
     if role_val in MULTI_CLIENT_ROLES:
         db.refresh(current_user, ["assigned_clients"])
+    if role_val in LOCATION_BASED_ROLES:
+        db.refresh(current_user, ["assigned_locations"])
     return _build_user_response(current_user)
+
+
+@router.get("/me/locations")
+async def get_my_locations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get the current user's assigned locations (for location-based roles like store_manager)."""
+    role_val = current_user.role.value if isinstance(current_user.role, UserRole) else current_user.role
+    if role_val not in LOCATION_BASED_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint is only for location-based roles",
+        )
+    db.refresh(current_user, ["assigned_locations"])
+    return [
+        {
+            "id": str(loc.id),
+            "name": loc.name,
+            "square_location_id": loc.square_location_id,
+            "currency": loc.currency,
+            "timezone": loc.timezone,
+        }
+        for loc in current_user.assigned_locations
+    ]
 
 
 @router.get("", response_model=UserListResponse)
@@ -69,7 +108,7 @@ async def list_users(
     """List all users in the admin's organization."""
     users = (
         db.query(User)
-        .options(joinedload(User.client), joinedload(User.assigned_clients))
+        .options(joinedload(User.client), joinedload(User.assigned_clients), joinedload(User.assigned_locations))
         .filter(User.organization_id == current_user.organization_id)
         .order_by(User.created_at.desc())
         .all()
@@ -136,6 +175,22 @@ async def create_new_user(
         user.client_id = data.client_id
         db.commit()
         db.refresh(user)
+    elif data.role in LOCATION_BASED_ROLES:
+        # Location-based roles: assign locations directly, no client link
+        user.client_id = None
+        if data.location_ids:
+            for lid in data.location_ids:
+                loc = db.query(Location).join(
+                    SquareAccount, Location.square_account_id == SquareAccount.id
+                ).filter(
+                    Location.id == lid,
+                    SquareAccount.organization_id == current_user.organization_id,
+                ).first()
+                if not loc:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Location {lid} not found")
+                db.execute(user_locations.insert().values(user_id=user.id, location_id=lid))
+        db.commit()
+        db.refresh(user)
     elif data.role in MULTI_CLIENT_ROLES:
         # Accept client_ids list, or fall back to single client_id
         ids_to_assign = data.client_ids or ([data.client_id] if data.client_id else [])
@@ -164,6 +219,8 @@ async def create_new_user(
     role_val = user.role.value if isinstance(user.role, UserRole) else user.role
     if role_val in MULTI_CLIENT_ROLES:
         db.refresh(user, ["assigned_clients"])
+    if role_val in LOCATION_BASED_ROLES:
+        db.refresh(user, ["assigned_locations"])
 
     return _build_user_response(user)
 
@@ -250,8 +307,28 @@ async def update_user(
     if data.is_active is not None:
         user.is_active = data.is_active
 
-    # Handle client assignment changes
-    if new_role in MULTI_CLIENT_ROLES:
+    # Handle client/location assignment changes
+    if new_role in LOCATION_BASED_ROLES:
+        # Clear client assignments — location-based roles don't use clients
+        db.execute(user_clients.delete().where(user_clients.c.user_id == user.id))
+        user.client_id = None
+        if hasattr(data, 'model_fields_set') and "location_ids" in data.model_fields_set:
+            # Replace all user_locations rows
+            db.execute(user_locations.delete().where(user_locations.c.user_id == user.id))
+            if data.location_ids:
+                for lid in data.location_ids:
+                    loc = db.query(Location).join(
+                        SquareAccount, Location.square_account_id == SquareAccount.id
+                    ).filter(
+                        Location.id == lid,
+                        SquareAccount.organization_id == current_user.organization_id,
+                    ).first()
+                    if not loc:
+                        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Location {lid} not found")
+                    db.execute(user_locations.insert().values(user_id=user.id, location_id=lid))
+    elif new_role in MULTI_CLIENT_ROLES:
+        # Clear location assignments — multi-client roles don't use locations
+        db.execute(user_locations.delete().where(user_locations.c.user_id == user.id))
         if hasattr(data, 'model_fields_set') and "client_ids" in data.model_fields_set:
             # Replace all user_clients rows
             db.execute(user_clients.delete().where(user_clients.c.user_id == user.id))
@@ -271,11 +348,15 @@ async def update_user(
             # Backward compat: single client_id update
             user.client_id = data.client_id
     elif new_role in ADMIN_ROLES:
-        # Clear multi-client assignments when switching to admin
+        # Clear all assignments when switching to admin
         db.execute(user_clients.delete().where(user_clients.c.user_id == user.id))
+        db.execute(user_locations.delete().where(user_locations.c.user_id == user.id))
         user.client_id = None
-    elif hasattr(data, 'model_fields_set') and "client_id" in data.model_fields_set:
-        user.client_id = data.client_id
+    else:
+        # Other roles (client, etc.) — clear location assignments
+        db.execute(user_locations.delete().where(user_locations.c.user_id == user.id))
+        if hasattr(data, 'model_fields_set') and "client_id" in data.model_fields_set:
+            user.client_id = data.client_id
 
     db.commit()
     db.refresh(user)
@@ -283,6 +364,8 @@ async def update_user(
         db.refresh(user, ["client"])
     if new_role in MULTI_CLIENT_ROLES:
         db.refresh(user, ["assigned_clients"])
+    if new_role in LOCATION_BASED_ROLES:
+        db.refresh(user, ["assigned_locations"])
 
     return _build_user_response(user)
 

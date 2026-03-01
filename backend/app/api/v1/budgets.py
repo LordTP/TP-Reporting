@@ -43,6 +43,15 @@ def get_accessible_locations(db: Session, user: User) -> list[str]:
         ).all()
         return [str(loc.id) for loc in locations]
 
+    # Location-based roles (store_manager): direct location assignment
+    role_val = user.role.value if hasattr(user.role, 'value') else user.role
+    if role_val == "store_manager":
+        from app.models.user import user_locations
+        rows = db.query(user_locations.c.location_id).filter(
+            user_locations.c.user_id == user.id
+        ).all()
+        return [str(r[0]) for r in rows]
+
     # Non-admin roles: scope to locations of assigned clients
     assigned_client_ids = [
         r[0] for r in db.query(user_clients.c.client_id).filter(

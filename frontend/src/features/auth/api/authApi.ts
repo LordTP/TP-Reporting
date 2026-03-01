@@ -20,6 +20,7 @@ export interface User {
   organization_id: string
   client_id: string | null
   client_ids: string[] | null
+  location_ids: string[] | null
   is_active: boolean
 }
 

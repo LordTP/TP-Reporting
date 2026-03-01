@@ -82,14 +82,17 @@ from app.schemas.sales import (
 router = APIRouter(tags=["sales"])
 
 
-MULTI_CLIENT_ROLES = {"store_manager", "reporting", "manager"}
+MULTI_CLIENT_ROLES = {"reporting", "manager"}
+LOCATION_BASED_ROLES = {"store_manager"}
 
 
 def _effective_client_id(user: User, client_id: Optional[str], db: Session = None) -> Optional[str]:
     """Return the effective client_id for filtering.
 
     - Client-role users: always locked to their single client_id.
-    - Multi-client roles (store_manager/reporting/manager): if they select a
+    - Location-based roles (store_manager): no client filtering — location
+      filtering is handled directly via user_locations.
+    - Multi-client roles (reporting/manager): if they select a
       specific client, validate it's in their allowed list; otherwise None.
     - Admin/superadmin: pass through the query param.
     """
@@ -98,6 +101,10 @@ def _effective_client_id(user: User, client_id: Optional[str], db: Session = Non
     # Client role: always locked
     if role_val == "client" and user.client_id:
         return str(user.client_id)
+
+    # Location-based roles: no client filtering
+    if role_val in LOCATION_BASED_ROLES:
+        return None
 
     # Multi-client roles
     if role_val in MULTI_CLIENT_ROLES and db is not None:
@@ -124,6 +131,10 @@ def _get_allowed_client_ids(user: User, db: Session) -> Optional[List[str]]:
 
     if role_val == "client" and user.client_id:
         return [str(user.client_id)]
+
+    # Location-based roles: no client restriction (location filtering handles access)
+    if role_val in LOCATION_BASED_ROLES:
+        return None
 
     if role_val in MULTI_CLIENT_ROLES:
         rows = db.query(user_clients.c.client_id).filter(user_clients.c.user_id == user.id).all()
@@ -160,10 +171,21 @@ def _resolve_client_group(db: Session, user: User, client_group_id: Optional[str
 def get_accessible_locations(db: Session, user: User) -> List[str]:
     """
     Get list of location IDs accessible by the user based on their role.
-    All non-superadmin roles get all org locations — client filtering is
+    Location-based roles (store_manager) are restricted to their assigned locations.
+    All other non-superadmin roles get all org locations — client filtering is
     handled separately via _get_client_filter_context.
     """
-    # All authenticated users can see all locations in their organization.
+    role_val = user.role.value if isinstance(user.role, UserRole) else user.role
+
+    # Location-based roles: only their directly assigned locations
+    if role_val in LOCATION_BASED_ROLES:
+        from app.models.user import user_locations
+        rows = db.query(user_locations.c.location_id).filter(
+            user_locations.c.user_id == user.id
+        ).all()
+        return [str(r[0]) for r in rows]
+
+    # All other authenticated users can see all locations in their organization.
     # Per-client filtering happens at the endpoint level via _effective_client_id
     # and _get_client_filter_context.
     locations = db.query(Location.id).join(SquareAccount).filter(

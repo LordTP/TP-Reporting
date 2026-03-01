@@ -1,7 +1,7 @@
 """
 User Model with Role-Based Access Control
 """
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -9,6 +9,17 @@ import uuid
 import enum
 
 from app.database import Base
+
+
+# Association table for many-to-many relationship between users and locations
+user_locations = Table(
+    'user_locations',
+    Base.metadata,
+    Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+    Column('user_id', UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+    Column('location_id', UUID(as_uuid=True), ForeignKey('locations.id', ondelete='CASCADE'), nullable=False),
+    Column('created_at', DateTime, default=datetime.utcnow, nullable=False),
+)
 
 
 class UserRole(str, enum.Enum):
@@ -39,6 +50,7 @@ class User(Base):
     organization = relationship("Organization", back_populates="users")
     client = relationship("Client", back_populates="users", foreign_keys=[client_id])
     assigned_clients = relationship("Client", secondary="user_clients")
+    assigned_locations = relationship("Location", secondary="user_locations")
     # TODO: Uncomment when Phase 6-8 models are created
     # location_permissions = relationship("UserLocationPermission", back_populates="user", cascade="all, delete-orphan")
     # dashboard_permissions = relationship("UserDashboardPermission", back_populates="user", cascade="all, delete-orphan")

@@ -46,7 +46,7 @@ export const DashboardPage = () => {
   const [editingUser, setEditingUser] = useState<any>(null)
   const [userFormError, setUserFormError] = useState('')
   const [userForm, setUserForm] = useState({
-    email: '', full_name: '', password: '', role: 'client', client_id: null as string | null, client_ids: [] as string[],
+    email: '', full_name: '', password: '', role: 'client', client_id: null as string | null, client_ids: [] as string[], location_ids: [] as string[],
   })
   const [deactivatingUser, setDeactivatingUser] = useState<any>(null)
   const [deletingUser, setDeletingUser] = useState<any>(null)
@@ -165,7 +165,7 @@ export const DashboardPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setShowUserForm(false)
-      setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [] })
+      setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [], location_ids: [] })
       setUserFormError('')
     },
     onError: (err: any) => {
@@ -179,7 +179,7 @@ export const DashboardPage = () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setEditingUser(null)
       setShowUserForm(false)
-      setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [] })
+      setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [], location_ids: [] })
       setUserFormError('')
     },
     onError: (err: any) => {
@@ -358,7 +358,8 @@ export const DashboardPage = () => {
     { value: 'client', label: 'Client' },
   ]
 
-  const MULTI_CLIENT_ROLES = ['store_manager', 'reporting', 'manager']
+  const MULTI_CLIENT_ROLES = ['reporting', 'manager']
+  const LOCATION_BASED_ROLES = ['store_manager']
 
   const ROLE_BADGE_STYLES: Record<string, string> = {
     superadmin: 'bg-red-100 text-red-700',
@@ -744,7 +745,7 @@ export const DashboardPage = () => {
                 onClick={() => {
                   setShowUserForm(true)
                   setEditingUser(null)
-                  setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [] })
+                  setUserForm({ email: '', full_name: '', password: '', role: 'client', client_id: null, client_ids: [], location_ids: [] })
                   setUserFormError('')
                 }}
                 className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm font-medium shadow-md hover:shadow-lg transition-all"
@@ -781,9 +782,11 @@ export const DashboardPage = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">
-                          {u.client_names && u.client_names.length > 0
-                            ? u.client_names.join(', ')
-                            : u.client_name || (u.client_id ? u.client_id : '—')}
+                          {u.location_names && u.location_names.length > 0
+                            ? u.location_names.join(', ')
+                            : u.client_names && u.client_names.length > 0
+                              ? u.client_names.join(', ')
+                              : u.client_name || (u.client_id ? u.client_id : '—')}
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground" title={u.last_login ? new Date(u.last_login).toLocaleString() : ''}>
                           {timeAgo(u.last_login)}
@@ -801,6 +804,7 @@ export const DashboardPage = () => {
                                 setShowUserForm(true)
                                 setUserForm({
                                   email: u.email,
+                                  location_ids: u.location_ids || [],
                                   full_name: u.full_name,
                                   password: '',
                                   role: u.role,
@@ -902,6 +906,7 @@ export const DashboardPage = () => {
                           role: value,
                           client_id: value === 'client' ? userForm.client_id : null,
                           client_ids: MULTI_CLIENT_ROLES.includes(value) ? (userForm.client_ids || []) : [],
+                          location_ids: LOCATION_BASED_ROLES.includes(value) ? (userForm.location_ids || []) : [],
                         })
                       }}>
                         <SelectTrigger className="w-full h-10 text-sm">
@@ -967,6 +972,40 @@ export const DashboardPage = () => {
                         </p>
                       </div>
                     )}
+                    {LOCATION_BASED_ROLES.includes(userForm.role) && (
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">
+                          Assigned Locations
+                        </label>
+                        <div className="border border-input rounded-md p-2 max-h-40 overflow-y-auto space-y-1 bg-background">
+                          {allLocationsData && allLocationsData.length > 0 ? (
+                            allLocationsData.map((loc: any) => (
+                              <label key={loc.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/30 px-1 py-0.5 rounded">
+                                <input
+                                  type="checkbox"
+                                  checked={(userForm.location_ids || []).includes(loc.id)}
+                                  onChange={(e) => {
+                                    const ids = userForm.location_ids || []
+                                    if (e.target.checked) {
+                                      setUserForm({ ...userForm, location_ids: [...ids, loc.id] })
+                                    } else {
+                                      setUserForm({ ...userForm, location_ids: ids.filter((id: string) => id !== loc.id) })
+                                    }
+                                  }}
+                                  className="rounded border-input"
+                                />
+                                <span className="text-foreground">{loc.name}</span>
+                              </label>
+                            ))
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">No locations available</p>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Select one or more locations this store manager can access.
+                        </p>
+                      </div>
+                    )}
                     {userFormError && (
                       <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
                         {userFormError}
@@ -993,6 +1032,9 @@ export const DashboardPage = () => {
                             }
                             if (userForm.role === 'client') {
                               payload.client_id = userForm.client_id
+                            } else if (LOCATION_BASED_ROLES.includes(userForm.role)) {
+                              payload.location_ids = userForm.location_ids
+                              payload.client_id = null
                             } else if (MULTI_CLIENT_ROLES.includes(userForm.role)) {
                               payload.client_ids = userForm.client_ids
                             } else {
@@ -1009,6 +1051,8 @@ export const DashboardPage = () => {
                             }
                             if (userForm.role === 'client' && userForm.client_id) {
                               payload.client_id = userForm.client_id
+                            } else if (LOCATION_BASED_ROLES.includes(userForm.role) && userForm.location_ids.length > 0) {
+                              payload.location_ids = userForm.location_ids
                             } else if (MULTI_CLIENT_ROLES.includes(userForm.role) && userForm.client_ids.length > 0) {
                               payload.client_ids = userForm.client_ids
                             }
