@@ -1170,33 +1170,33 @@ export default function AnalyticsPage() {
                         <table className="w-full">
                           <thead>
                             <tr className="border-b border-border bg-muted/50">
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Budget</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actual Sales (Net)</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Variance</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Attainment</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
+                              <th className="px-2 sm:px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Budget</th>
+                              <th className="px-2 sm:px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider"><span className="sm:hidden">Actual</span><span className="hidden sm:inline">Actual Sales (Net)</span></th>
+                              <th className="hidden md:table-cell px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Variance</th>
+                              <th className="px-2 sm:px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider"><span className="sm:hidden">%</span><span className="hidden sm:inline">Attainment</span></th>
+                              <th className="hidden sm:table-cell px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border">
                             {budgetByLocation.map((loc) => (
                               <tr key={loc.location_id} className="hover:bg-muted/30 transition-colors">
-                                <td className="px-4 py-3 text-sm font-medium text-foreground">{loc.location_name}</td>
-                                <td className="px-4 py-3 text-sm text-right text-muted-foreground">
+                                <td className="px-3 sm:px-4 py-3 text-sm font-medium text-foreground max-w-[120px] sm:max-w-none truncate">{loc.location_name}</td>
+                                <td className="px-2 sm:px-4 py-3 text-sm text-right text-muted-foreground">
                                   {formatCurrency(loc.budget, loc.currency)}
                                 </td>
-                                <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">
+                                <td className="px-2 sm:px-4 py-3 text-sm text-right font-semibold text-foreground">
                                   {formatCurrency(loc.sales, loc.currency)}
                                 </td>
-                                <td className={`px-4 py-3 text-sm text-right font-semibold ${loc.variance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                <td className={`hidden md:table-cell px-4 py-3 text-sm text-right font-semibold ${loc.variance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                   {loc.variance >= 0 ? '+' : ''}{formatCurrency(loc.variance, loc.currency)}
                                 </td>
-                                <td className={`px-4 py-3 text-sm text-right font-semibold ${
+                                <td className={`px-2 sm:px-4 py-3 text-sm text-right font-semibold ${
                                   loc.attainment >= 100 ? 'text-emerald-600' : loc.attainment >= 90 ? 'text-amber-600' : 'text-red-600'
                                 }`}>
                                   {Number(loc.attainment).toFixed(1)}%
                                 </td>
-                                <td className="px-4 py-3 text-center">
+                                <td className="hidden sm:table-cell px-4 py-3 text-center">
                                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                     loc.status === 'exceeded' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20' :
                                     loc.status === 'on_track' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20' :
@@ -1210,23 +1210,23 @@ export default function AnalyticsPage() {
                           </tbody>
                           <tfoot>
                             <tr className="border-t-2 border-border bg-muted/40">
-                              <td className="px-4 py-3 text-sm font-semibold text-foreground">Total</td>
-                              <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">
+                              <td className="px-3 sm:px-4 py-3 text-sm font-semibold text-foreground">Total</td>
+                              <td className="px-2 sm:px-4 py-3 text-sm text-right font-semibold text-foreground">
                                 <div>{formatCurrency(Number(budgetPerformanceData!.summary.total_budget), 'GBP')}</div>
                                 <CurrencyBreakdownAnnotation breakdown={budgetPerformanceData!.summary.budget_by_currency} />
                               </td>
-                              <td className="px-4 py-3 text-sm text-right font-semibold text-primary">
+                              <td className="px-2 sm:px-4 py-3 text-sm text-right font-semibold text-primary">
                                 <div>{formatCurrency(Number(budgetPerformanceData!.summary.total_sales), 'GBP')}</div>
                                 <CurrencyBreakdownAnnotation breakdown={budgetPerformanceData!.summary.sales_by_currency} />
                               </td>
-                              <td className={`px-4 py-3 text-sm text-right font-semibold ${Number(budgetPerformanceData!.summary.overall_variance) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              <td className={`hidden md:table-cell px-4 py-3 text-sm text-right font-semibold ${Number(budgetPerformanceData!.summary.overall_variance) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                 {Number(budgetPerformanceData!.summary.overall_variance) >= 0 ? '+' : ''}
                                 {formatCurrency(Number(budgetPerformanceData!.summary.overall_variance), 'GBP')}
                               </td>
-                              <td className="px-4 py-3 text-sm text-right font-semibold text-primary">
+                              <td className="px-2 sm:px-4 py-3 text-sm text-right font-semibold text-primary">
                                 {Number(budgetPerformanceData!.summary.overall_attainment_percentage).toFixed(1)}%
                               </td>
-                              <td className="px-4 py-3 text-center text-xs font-medium text-muted-foreground">
+                              <td className="hidden sm:table-cell px-4 py-3 text-center text-xs font-medium text-muted-foreground">
                                 {budgetPerformanceData!.summary.locations_on_target}/{budgetPerformanceData!.summary.total_locations} on target
                               </td>
                             </tr>
@@ -1407,11 +1407,11 @@ export default function AnalyticsPage() {
                       <table className="w-full">
                         <thead>
                           <tr className="border-b border-border bg-muted/50">
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-8">#</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Transactions</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Avg Transaction</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Sales</th>
+                            <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-8">#</th>
+                            <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</th>
+                            <th className="px-2 sm:px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider"><span className="sm:hidden">Txns</span><span className="hidden sm:inline">Transactions</span></th>
+                            <th className="hidden md:table-cell px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Avg Transaction</th>
+                            <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider"><span className="sm:hidden">Sales</span><span className="hidden sm:inline">Total Sales</span></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -1421,34 +1421,34 @@ export default function AnalyticsPage() {
                                 className={`transition-colors ${item.isGroup ? 'bg-muted/20 hover:bg-muted/40 cursor-pointer' : 'hover:bg-muted/30'}`}
                                 onClick={item.isGroup ? () => toggleGroup(item.id) : undefined}
                               >
-                                <td className="px-4 py-3 text-sm text-muted-foreground">{index + 1}</td>
-                                <td className="px-4 py-3 text-sm font-medium text-foreground">
+                                <td className="hidden sm:table-cell px-4 py-3 text-sm text-muted-foreground">{index + 1}</td>
+                                <td className="px-3 sm:px-4 py-3 text-sm font-medium text-foreground max-w-[140px] sm:max-w-none">
                                   <div className="flex items-center gap-2">
                                     {item.isGroup && (
                                       expandedGroups.has(item.id)
                                         ? <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                                         : <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                                     )}
-                                    <span className={item.isGroup ? 'font-semibold' : ''}>{item.name}</span>
+                                    <span className={`${item.isGroup ? 'font-semibold' : ''} truncate`}>{item.name}</span>
                                     {!item.isGroup && item.currency !== 'GBP' && (
-                                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-normal">
+                                      <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-normal">
                                         {item.currency}
                                       </span>
                                     )}
                                     {item.isGroup && (
-                                      <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-normal">
+                                      <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-normal">
                                         {item.children.length} locations
                                       </span>
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-right text-foreground">
+                                <td className="px-2 sm:px-4 py-3 text-sm text-right text-foreground">
                                   {item.total_transactions.toLocaleString()}
                                 </td>
-                                <td className="px-4 py-3 text-sm text-right text-muted-foreground">
+                                <td className="hidden md:table-cell px-4 py-3 text-sm text-right text-muted-foreground">
                                   {formatCurrency(item.average_transaction, item.isGroup ? 'GBP' : item.currency)}
                                 </td>
-                                <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">
+                                <td className="px-3 sm:px-4 py-3 text-sm text-right font-semibold text-foreground">
                                   {item.isGroup
                                     ? formatCurrency(item.converted_total_sales, 'GBP')
                                     : formatCurrency(item.total_sales, item.currency)
@@ -1458,25 +1458,25 @@ export default function AnalyticsPage() {
                               {/* Expanded child locations */}
                               {item.isGroup && expandedGroups.has(item.id) && item.children.map((child: any) => (
                                 <tr key={child.location_id} className="bg-muted/10 hover:bg-muted/20 transition-colors">
-                                  <td className="px-4 py-2 text-sm text-muted-foreground"></td>
-                                  <td className="px-4 py-2 text-sm text-foreground pl-12">
+                                  <td className="hidden sm:table-cell px-4 py-2 text-sm text-muted-foreground"></td>
+                                  <td className="px-3 sm:px-4 py-2 text-sm text-foreground pl-8 sm:pl-12 max-w-[140px] sm:max-w-none">
                                     <div className="flex items-center gap-2">
                                       <span className="text-muted-foreground/50">└</span>
-                                      {child.location_name}
+                                      <span className="truncate">{child.location_name}</span>
                                       {child.currency !== 'GBP' && (
-                                        <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-normal">
+                                        <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-normal">
                                           {child.currency}
                                         </span>
                                       )}
                                     </div>
                                   </td>
-                                  <td className="px-4 py-2 text-sm text-right text-muted-foreground">
+                                  <td className="px-2 sm:px-4 py-2 text-sm text-right text-muted-foreground">
                                     {child.total_transactions.toLocaleString()}
                                   </td>
-                                  <td className="px-4 py-2 text-sm text-right text-muted-foreground">
+                                  <td className="hidden md:table-cell px-4 py-2 text-sm text-right text-muted-foreground">
                                     {formatCurrency(child.average_transaction, 'GBP')}
                                   </td>
-                                  <td className="px-4 py-2 text-sm text-right text-muted-foreground">
+                                  <td className="px-3 sm:px-4 py-2 text-sm text-right text-muted-foreground">
                                     {formatCurrency(child.converted_total_sales || child.total_sales, 'GBP')}
                                     {child.currency !== 'GBP' && (
                                       <div className="text-[10px] text-muted-foreground/60">
@@ -1491,13 +1491,13 @@ export default function AnalyticsPage() {
                         </tbody>
                         <tfoot>
                           <tr className="border-t-2 border-border bg-muted/40">
-                            <td className="px-4 py-3" />
-                            <td className="px-4 py-3 text-sm font-semibold text-foreground">Total</td>
-                            <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">
+                            <td className="hidden sm:table-cell px-4 py-3" />
+                            <td className="px-3 sm:px-4 py-3 text-sm font-semibold text-foreground">Total</td>
+                            <td className="px-2 sm:px-4 py-3 text-sm text-right font-semibold text-foreground">
                               {salesByLocationData.reduce((sum: number, loc: any) => sum + loc.total_transactions, 0).toLocaleString()}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right text-muted-foreground">—</td>
-                            <td className="px-4 py-3 text-sm text-right font-semibold text-primary">
+                            <td className="hidden md:table-cell px-4 py-3 text-sm text-right text-muted-foreground">—</td>
+                            <td className="px-3 sm:px-4 py-3 text-sm text-right font-semibold text-primary">
                               <div>
                                 {formatCurrency(
                                   salesByLocationData.reduce((sum: number, loc: any) => sum + (loc.converted_total_sales || loc.total_sales), 0),

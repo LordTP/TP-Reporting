@@ -5,7 +5,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useThemeStore } from '@/store/themeStore'
 import { usePermissionStore } from '@/store/permissionStore'
 import { apiClient } from '@/lib/api-client'
-import { Sun, Moon, Menu } from 'lucide-react'
+import { Sun, Moon, Menu, BarChart3, ShoppingCart, FileText, Wallet, Footprints, Shield, Store, LogOut } from 'lucide-react'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
 
 const FULL_ACCESS_ROLES = ['admin', 'superadmin']
@@ -29,12 +29,27 @@ export default function AppNav() {
     refetchOnWindowFocus: false,
   })
 
-  const navLink = (to: string, label: string, mobile = false) => {
+  const navLink = (to: string, label: string, mobile = false, Icon?: React.ComponentType<{ className?: string }>) => {
     const isActive = location.pathname === to || location.pathname.startsWith(to + '/')
+    if (mobile) {
+      return (
+        <Link
+          to={to}
+          className={`flex items-center gap-3 px-3 py-2 text-[15px] font-medium rounded-lg transition-all duration-200 ${
+            isActive
+              ? 'bg-brand-core-blue/30 text-white'
+              : 'text-brand-glow-blue hover:text-white hover:bg-brand-core-blue/15'
+          }`}
+        >
+          {Icon && <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-brand-core-orange' : ''}`} />}
+          {label}
+        </Link>
+      )
+    }
     return (
       <Link
         to={to}
-        className={`${mobile ? 'block px-2 py-3.5 text-lg' : 'text-sm'} font-medium transition-all duration-300 ${isActive ? 'text-primary dark:drop-shadow-[0_0_6px_rgba(251,115,30,0.4)]' : 'text-muted-foreground hover:text-foreground'}`}
+        className={`text-sm font-medium transition-all duration-300 ${isActive ? 'text-primary dark:drop-shadow-[0_0_6px_rgba(251,115,30,0.4)]' : 'text-muted-foreground hover:text-foreground'}`}
       >
         {label}
       </Link>
@@ -105,41 +120,52 @@ export default function AppNav() {
                   <Menu className="h-5 w-5" />
                 </button>
               </SheetTrigger>
-              <SheetContent side="right" className="flex flex-col p-0 w-[280px]">
+              <SheetContent side="right" className="flex flex-col p-0 w-[280px] !bg-[hsl(240,16%,9%)] !border-l !border-brand-core-blue/20">
                 <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
 
                 {/* Brand */}
-                <div className="px-6 pt-6 pb-4">
-                  <div className="flex flex-col items-start gap-0">
-                    <h2 className="text-lg font-light text-foreground tracking-brand-heading uppercase leading-none">
-                      Teliporter
-                    </h2>
-                    <span className="text-xs tracking-brand-sub uppercase text-muted-foreground font-medium">
-                      Reporting
-                    </span>
-                  </div>
+                <div className="px-5 pt-5 pb-2">
+                  <h2 className="text-base font-light text-white tracking-brand-heading uppercase leading-none">
+                    Teliporter
+                  </h2>
+                  <span className="text-[10px] tracking-brand-sub uppercase text-brand-light-blue font-medium">
+                    Reporting
+                  </span>
                 </div>
+
+                <div className="h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent dark:via-brand-core-orange/30" />
 
                 {/* Nav links */}
-                <div className="flex-1 overflow-y-auto py-4 px-4 space-y-1">
-                  {hasPerm('page:analytics') && navLink('/analytics', 'Analytics', true)}
-                  {hasPerm('page:sales') && navLink('/sales', 'Sales', true)}
-                  {hasPerm('page:reports') && navLink('/reports', 'Reports', true)}
-                  {hasPerm('page:budgets') && navLink('/budgets', 'Budgets', true)}
-                  {hasPerm('page:footfall') && navLink('/footfall', 'Footfall', true)}
-                  {hasPerm('page:admin') && navLink('/dashboard', 'Admin', true)}
-                  {hasPerm('page:square_accounts') && navLink('/square-accounts', 'Square Accounts', true)}
+                <div className="flex-1 overflow-y-auto py-2 px-3 space-y-0.5">
+                  {hasPerm('page:analytics') && navLink('/analytics', 'Analytics', true, BarChart3)}
+                  {hasPerm('page:sales') && navLink('/sales', 'Sales', true, ShoppingCart)}
+                  {hasPerm('page:reports') && navLink('/reports', 'Reports', true, FileText)}
+                  {hasPerm('page:budgets') && navLink('/budgets', 'Budgets', true, Wallet)}
+                  {hasPerm('page:footfall') && navLink('/footfall', 'Footfall', true, Footprints)}
+                  {hasPerm('page:admin') && navLink('/dashboard', 'Admin', true, Shield)}
+                  {hasPerm('page:square_accounts') && navLink('/square-accounts', 'Square', true, Store)}
                 </div>
 
-                {/* Footer: user info + logout */}
-                <div className="px-6 py-4">
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {user?.full_name}{isAdmin ? ` (${user?.role})` : ''}
-                  </p>
+                <div className="h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent dark:via-brand-core-orange/30" />
+
+                {/* Footer */}
+                <div className="px-4 py-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-brand-light-blue truncate">
+                      {user?.full_name}{isAdmin ? <span className="text-brand-light-blue/60"> · {user?.role}</span> : ''}
+                    </p>
+                    <button
+                      onClick={toggle}
+                      className="p-1.5 rounded-md text-brand-light-blue hover:text-white hover:bg-brand-core-blue/20 transition-colors"
+                    >
+                      {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
                   <button
                     onClick={() => logout()}
-                    className="w-full px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-md font-medium tracking-wide hover:bg-brand-light-orange transition-all duration-300"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-brand-core-orange/90 text-white rounded-lg font-medium tracking-wide hover:bg-brand-core-orange transition-all duration-200"
                   >
+                    <LogOut className="h-3.5 w-3.5" />
                     Logout
                   </button>
                 </div>
