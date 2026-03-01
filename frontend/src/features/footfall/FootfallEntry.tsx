@@ -4,7 +4,8 @@ import { apiClient } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, TrendingUp } from 'lucide-react'
+import { Plus, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, TrendingUp, Filter } from 'lucide-react'
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useAuthStore } from '@/store/authStore'
 import { usePermissionStore } from '@/store/permissionStore'
@@ -187,9 +188,48 @@ export default function FootfallEntry() {
         )}
       </div>
 
-      {/* Location filter */}
-      <div className="flex gap-4 flex-wrap items-center">
-        <div className="w-full sm:w-56">
+      {/* Mobile: Filter trigger opens side Sheet */}
+      <Sheet>
+        <div className="md:hidden flex items-center gap-4">
+          <SheetTrigger asChild>
+            <button className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+              <Filter className="h-4 w-4" />
+              <span className="text-sm font-medium">Filters</span>
+              {locationFilter !== 'all' && (
+                <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">1</span>
+              )}
+            </button>
+          </SheetTrigger>
+          {entriesData && entriesData.total > 0 && (
+            <span className="text-sm text-muted-foreground">
+              {entriesData.total} {entriesData.total === 1 ? 'entry' : 'entries'} this month
+            </span>
+          )}
+        </div>
+        <SheetContent side="right" className="w-[300px] flex flex-col p-0">
+          <SheetTitle className="sr-only">Filters</SheetTitle>
+          <div className="flex items-center gap-2 px-5 pt-5 pb-3 border-b border-border/50">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">Filters</span>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Location</label>
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All Locations" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {(locations || []).map((loc) => (<SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Desktop: inline location filter */}
+      <div className="hidden md:flex gap-4 flex-wrap items-center">
+        <div className="w-56">
           <Select value={locationFilter} onValueChange={setLocationFilter}>
             <SelectTrigger>
               <SelectValue placeholder="All Locations" />

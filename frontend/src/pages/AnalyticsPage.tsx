@@ -16,8 +16,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import {
   DollarSign, TrendingUp, ShoppingCart, Package, Filter,
   RefreshCw, Target, BarChart3, CreditCard, Banknote, Wallet, AlertTriangle,
-  ChevronDown, ChevronRight, ChevronUp, Receipt, Calculator,
+  ChevronDown, ChevronRight, Receipt, Calculator,
 } from 'lucide-react'
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import React, { useMemo, useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -251,7 +252,7 @@ export default function AnalyticsPage() {
     isClientRole ? (user?.client_id || 'all') : 'all'
   )
   const [selectedClientGroup, setSelectedClientGroup] = useState<string>('all')
-  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [filtersSheetOpen, setFiltersSheetOpen] = useState(false)
 
   // Comparison state
   const [compareMode, setCompareMode] = useState<string>('none')
@@ -633,32 +634,142 @@ export default function AnalyticsPage() {
           </Button>
         </div>
 
-        {/* Filters */}
-        <div className="mb-8 bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20">
-          {/* Mobile: collapsible toggle + refresh */}
-          <div className="md:hidden flex items-center justify-between p-4">
-            <button
-              onClick={() => setFiltersOpen(!filtersOpen)}
-              className="flex items-center gap-2"
-            >
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-muted-foreground">Filters</span>
-              {activeFilterCount > 0 && (
-                <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">
-                  {activeFilterCount}
-                </span>
-              )}
-              {filtersOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-            </button>
+        {/* Mobile: Filter trigger opens side Sheet */}
+        <Sheet open={filtersSheetOpen} onOpenChange={setFiltersSheetOpen}>
+          <div className="md:hidden flex items-center justify-between mb-6">
+            <SheetTrigger asChild>
+              <button className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+                <Filter className="h-4 w-4" />
+                <span className="text-sm font-medium">Filters</span>
+                {activeFilterCount > 0 && (
+                  <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            </SheetTrigger>
             <Button onClick={() => refetch()} variant="outline" size="sm">
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
           </div>
+          <SheetContent side="right" className="w-[300px] flex flex-col p-0">
+            <SheetTitle className="sr-only">Filters</SheetTitle>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border/50">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Filters</span>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Date Range</label>
+                <Select value={datePreset} onValueChange={setDatePreset}>
+                  <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="Date range" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="tomorrow">Tomorrow</SelectItem>
+                    <SelectItem value="yesterday">Yesterday</SelectItem>
+                    <SelectItem value="this_week">This Week</SelectItem>
+                    <SelectItem value="this_month">This Month</SelectItem>
+                    <SelectItem value="this_year">This Year</SelectItem>
+                    <SelectItem value="7">Last 7 days</SelectItem>
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    <SelectItem value="60">Last 60 days</SelectItem>
+                    <SelectItem value="90">Last 90 days</SelectItem>
+                    <SelectItem value="180">Last 6 months</SelectItem>
+                    <SelectItem value="365">Last year</SelectItem>
+                    <SelectItem value="custom">Custom Range</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {datePreset === 'custom' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground block">Custom Dates</label>
+                  <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background" />
+                  <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background" />
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Comparison</label>
+                <Select value={compareMode} onValueChange={(v) => { setCompareMode(v); if (v !== 'custom') { setCompareStartDate(''); setCompareEndDate('') } }}>
+                  <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="Compare to..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No comparison</SelectItem>
+                    <SelectItem value="previous_period">Previous period</SelectItem>
+                    <SelectItem value="previous_year">Same period last year</SelectItem>
+                    <SelectItem value="custom">Custom comparison</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {compareMode === 'custom' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground block">Comparison Dates</label>
+                  <input type="date" value={compareStartDate} onChange={(e) => setCompareStartDate(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background" />
+                  <input type="date" value={compareEndDate} onChange={(e) => setCompareEndDate(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md border border-input bg-background" />
+                </div>
+              )}
+              {showClientFilter && (
+                <>
+                  {clientGroupsData?.client_groups && clientGroupsData.client_groups.length > 0 && (
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Client Group</label>
+                      <Select value={selectedClientGroup} onValueChange={(value) => { setSelectedClientGroup(value); if (value !== 'all') setSelectedClient('all'); setSelectedLocation('all') }}>
+                        <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All client groups" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All client groups</SelectItem>
+                          {clientGroupsData.client_groups.map((group: any) => (<SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Client</label>
+                    <Select value={selectedClient} onValueChange={(value) => { setSelectedClient(value); if (value !== 'all') setSelectedClientGroup('all'); setSelectedLocation('all') }}>
+                      <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All clients" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All clients</SelectItem>
+                        {(clientsData?.clients || []).filter((client: any) => isAdmin || !user?.client_ids || user.client_ids.includes(client.id)).map((client: any) => (<SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {!clientHasKeywords && (
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Location</label>
+                      <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+                        <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All locations" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{selectedClient !== 'all' ? 'All client locations' : 'All locations'}</SelectItem>
+                          {filteredLocations?.map((location: any) => (<SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </>
+              )}
+              {isStoreManager && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Location</label>
+                  <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+                    <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="All locations" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All my locations</SelectItem>
+                      {(allLocations || []).map((location: any) => (<SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-border/50">
+              <Button onClick={() => setFiltersSheetOpen(false)} className="w-full">Apply Filters</Button>
+            </div>
+          </SheetContent>
+        </Sheet>
 
-          {/* Filter controls: always visible on md+, toggled on mobile */}
-          <div className={`${filtersOpen ? 'flex' : 'hidden'} md:flex flex-wrap gap-3 p-4 pt-0 md:pt-4`}>
-            <div className="hidden md:flex items-center gap-2 mr-2">
+        {/* Desktop: inline filter row */}
+        <div className="hidden md:block mb-8 bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-sm dark:bg-brand-shade-blue/60 dark:backdrop-blur-md dark:border-brand-core-blue/20">
+          <div className="flex flex-wrap gap-3 p-4">
+            <div className="flex items-center gap-2 mr-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium text-muted-foreground">Filters</span>
             </div>
